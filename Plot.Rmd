@@ -1,0 +1,241 @@
+---
+title: "Plot"
+author: "Advay Vyas"
+date: "4/8/25"
+output:
+  pdf_document:
+    toc: false
+  html_document:
+    toc: false
+    df_print: paged
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+```
+
+```{r}
+facility = read.csv("DSHS/thcic-ids_city_county_crosswalk.csv")
+facility_filtered = facility %>%
+  group_by(THCIC_ID) %>%
+  filter(YEAR == max(YEAR)) %>%
+  ungroup()
+
+TX_zip_zcta_pop_city = read.csv("DSHS/TX_zip_zcta_pop_city.csv")
+TX_zcta_pop_city = TX_zip_zcta_pop_city %>%
+  select(zcta, City, population) %>%
+  distinct() %>%
+  group_by(City) %>%
+  summarise(population = sum(population))
+
+County = read.csv("DSHS/county_fips_us.csv")
+```
+
+```{r}
+flu22_3 = read.csv("DSHS/FLU_ALL_PAT_CAT_2022Q3.csv")
+flu22_4 = read.csv("DSHS/FLU_ALL_PAT_CAT_2022Q4.csv")
+flu23_1 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q1.csv")
+flu23_2 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q2.csv")
+flu23_3 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q3.csv")
+flu23_4 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q4.csv")
+flu24_1 = read.csv("DSHS/FLU_ALL_PAT_CAT_2024Q1.csv")
+flu24_2 = read.csv("DSHS/FLU_ALL_PAT_CAT_2024Q2.csv")
+```
+
+```{r}
+flu_all_pat_filter = function(flu1){
+  flu11 = flu1 %>%
+    select(THCIC_ID, PAT_STATE, PAT_ZIP, PAT_COUNTRY, PAT_COUNTY) %>%
+    mutate(PAT_ZIP = ifelse(nchar(PAT_ZIP) < 5 | grepl("\\D", PAT_ZIP), NA, PAT_ZIP)) %>%
+    mutate(
+      PAT_COUNTY_FIPS = str_pad(PAT_COUNTY, width = 3, side = "left", pad = "0"),
+      PAT_COUNTY_FIPS = paste0("48", PAT_COUNTY_FIPS)
+    ) %>%
+    mutate(PAT_COUNTY_FIPS = as.integer(PAT_COUNTY_FIPS),
+           PAT_ZIP = as.integer(PAT_ZIP)) %>%
+    left_join(County, by = c("PAT_COUNTY_FIPS" = "FIPS")) %>%
+    rename(PAT_County = County) %>%
+    select(-State.Abbreviation, -State.Name, -FIPS_int, -PAT_COUNTRY) %>%
+    left_join(TX_zip_zcta_pop_city, by = c("PAT_ZIP" = "ZIP_CODE", "PAT_STATE" = "STATE")) %>%
+    rename(PAT_zcta = zcta, 
+           PAT_City = City, 
+           PAT_PO_NAME = PO_NAME,
+           PAT_population = population) 
+  
+  flu12 = flu11 %>%
+    left_join(facility_filtered, by = "THCIC_ID") %>%
+    select(-HOSP_NAME, -HOSP_NAME_clean) %>%
+    filter(!is.na(HOSP_CITY) & !is.na(PAT_City)) 
+  return(flu12)
+}
+```
+
+```{r warning = FALSE}
+flu22_3_prop = flu_all_pat_filter(flu22_3)
+flu22_4_prop = flu_all_pat_filter(flu22_4)
+flu23_1_prop = flu_all_pat_filter(flu23_1)
+flu23_2_prop = flu_all_pat_filter(flu23_2)
+flu23_3_prop = flu_all_pat_filter(flu23_3)
+flu23_4_prop = flu_all_pat_filter(flu23_4)
+flu24_1_prop = flu_all_pat_filter(flu24_1)
+flu24_2_prop = flu_all_pat_filter(flu24_2)
+
+# Add quarter tag and combine
+flu22_3_prop$quarter = "2022Q3"
+flu22_4_prop$quarter = "2022Q4"
+flu23_1_prop$quarter = "2023Q1"
+flu23_2_prop$quarter = "2023Q2"
+flu23_3_prop$quarter = "2023Q3"
+flu23_4_prop$quarter = "2023Q4"
+flu24_1_prop$quarter = "2024Q1"
+
+flu24_2_prop$quarter = "2024Q2"
+
+flu_all_labeled = bind_rows(
+  flu22_3_prop, flu22_4_prop,
+  flu23_1_prop, flu23_2_prop,
+  flu23_3_prop, flu23_4_prop,
+  flu24_1_prop, flu24_2_prop
+)
+```
+
+```{r}
+city_trend = flu_all_labeled %>%
+  filter(PAT_STATE == "TX") %>%
+  group_by(quarter, PAT_City) %>%
+  summarise(total_patients = n(), .groups = "drop")
+
+# Focus on major cities
+major_cities = c("Houston", "San Antonio", "Dallas", "Austin", "Fort Worth", "El Paso", "Arlington", "Corpus Christi")
+
+city_trend_major = city_trend %>% filter(PAT_City %in% major_cities) %>% mutate(PAT_City = factor(PAT_City, levels = major_cities))
+
+```
+
+```{r, fig.height=6, fig.width=10}
+ggplot(city_trend_major, aes(x = quarter, y = total_patients, color = PAT_City, group = PAT_City)) +
+  geom_line(linewidth = 1.2) +
+  geom_point() +
+  theme_minimal(base_size = 14) +
+  labs(title = "Flu Patient Trends Over Time by City", x = "Quarter", y = "Number of Patients", color = "City") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + facet_wrap(~PAT_City, nrow = 2)
+```
+
+```{r, cache=TRUE}
+hospitals = read.csv("COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_Facility.csv")
+hospitals = hospitals[hospitals$state=="TX",] %>% mutate(city = str_to_title(city))
+```
+
+```{r, fig.height=6, fig.width=10}
+hospitals_major = hospitals %>% filter(city %in% major_cities) %>% mutate(city = factor(city, levels = major_cities))
+desired_columns = c("hospital_pk", "collection_week", "hospital_name", "city", "hospital_subtype", "total_beds_7_day_avg", "total_patients_hospitalized_confirmed_influenza_7_day_sum", "total_patients_hospitalized_confirmed_influenza_7_day_avg")
+
+hospitals_major_by = hospitals_major %>%
+  select(all_of(desired_columns)) %>%  
+  rename(
+    id = hospital_pk,
+    week = collection_week,
+    name = hospital_name,
+    city = city,
+    subtype = hospital_subtype,
+    beds_avg = total_beds_7_day_avg,
+    flu_sum = total_patients_hospitalized_confirmed_influenza_7_day_sum,
+    flu_avg = total_patients_hospitalized_confirmed_influenza_7_day_avg) 
+
+hospitals_major_by = hospitals_major_by %>% mutate(across(c(beds_avg, flu_sum, flu_avg), ~ifelse(. <= 0, NA, .)))
+
+ggplot(hospitals_major_by %>% filter(!is.na(flu_avg))) +
+  geom_histogram(aes(x = flu_avg, fill=city), bins=30) + facet_wrap(~city, nrow=2)
+
+ggplot(hospitals_major_by %>% filter(!is.na(flu_sum))) +
+  geom_histogram(aes(x = flu_sum, fill=city), bins=30) + facet_wrap(~city, nrow=2)
+
+ggplot(hospitals_major_by %>% filter(!is.na(beds_avg))) +
+  geom_histogram(aes(x = beds_avg, fill=city), bins=30) + facet_wrap(~city, nrow=2)
+
+hospitals_by_year = hospitals_major_by %>%
+  mutate(year = year(week)) %>%  # Extract year from date column
+  group_by(id, year, name, city) %>%
+  summarise(
+    beds_avg = mean(beds_avg, na.rm = TRUE),
+    flu_sum = mean(flu_sum, na.rm = TRUE),
+    flu_avg = mean(flu_avg, na.rm = TRUE),
+    entries = n(),
+    .groups = "drop"
+  )
+
+
+unique_hospitals_by_city = hospitals_by_year %>%
+  filter(city %in% major_cities) %>%
+  group_by(city) %>%
+  summarise(unique_hospitals = n_distinct(id), .groups = "drop") %>% 
+  arrange(desc(unique_hospitals))
+
+knitr::kable(unique_hospitals_by_city)
+
+
+# want to maybe collect data by hospital and then do a time series type of thing
+# want to look into hospital beds available by population during that timeframe and see if that affects things
+# maybe like total beds available can be a line graph, total beds used can be a line graph plotted against the city patient count
+# keep in mind this is 2022 Q3 -> 2024 Q2
+```
+
+```{r, fig.length = 6, fig.width = 10}
+# Step 1: Add quarter column
+hospitals_major_by_q = hospitals_major_by %>%
+  mutate(
+    week = as.Date(week),
+    quarter = paste0(year(week), " Q", quarter(week))
+  )
+
+# Step 2: Aggregate total beds by city and quarter
+beds_by_city_quarter = hospitals_major_by_q %>%
+  group_by(city, quarter) %>%
+  summarise(total_beds = sum(beds_avg, na.rm = TRUE), .groups = "drop")
+
+# Optional: make quarter a factor ordered chronologically
+beds_by_city_quarter = beds_by_city_quarter %>%
+  mutate(quarter = factor(quarter, levels = unique(quarter)))
+
+# Step 3: Plot
+ggplot(beds_by_city_quarter, aes(x = quarter, y = total_beds, color = city, group = city)) +
+  geom_line(size = 1) +
+  geom_point() +
+  theme_minimal() +
+  labs(
+    title = "Total Beds by City and Quarter",
+    x = "Quarter",
+    y = "Total Beds"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 2)) + facet_wrap(~city, nrow=2)
+
+```
+
+```{r, fig.length = 6, fig.width = 15}
+# Combine datasets into long format
+flu_long = city_trend_major %>% select(city = PAT_City, quarter, value = total_patients) %>% mutate(metric = "Flu Patients")
+beds_long = beds_by_city_quarter %>% select(city, quarter, value = total_beds) %>% mutate(metric = "Total Beds")
+
+combined = bind_rows(flu_long, beds_long)
+
+# Plot both metrics faceted
+ggplot(combined, aes(x = quarter, y = value, color = city, group = city)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
