@@ -1,5 +1,5 @@
 ---
-title: "Plot"
+title: "Week 1"
 author: "Advay Vyas"
 date: "4/8/25"
 output:
@@ -24,31 +24,31 @@ library(lubridate)
 ```
 
 ```{r}
-facility = read.csv("DSHS/thcic-ids_city_county_crosswalk.csv")
+facility = read.csv("../DSHS/thcic-ids_city_county_crosswalk.csv")
 facility_filtered = facility %>%
   group_by(THCIC_ID) %>%
   filter(YEAR == max(YEAR)) %>%
   ungroup()
 
-TX_zip_zcta_pop_city = read.csv("DSHS/TX_zip_zcta_pop_city.csv")
+TX_zip_zcta_pop_city = read.csv("../DSHS/TX_zip_zcta_pop_city.csv")
 TX_zcta_pop_city = TX_zip_zcta_pop_city %>%
   select(zcta, City, population) %>%
   distinct() %>%
   group_by(City) %>%
   summarise(population = sum(population))
 
-County = read.csv("DSHS/county_fips_us.csv")
+County = read.csv("../DSHS/county_fips_us.csv")
 ```
 
 ```{r}
-flu22_3 = read.csv("DSHS/FLU_ALL_PAT_CAT_2022Q3.csv")
-flu22_4 = read.csv("DSHS/FLU_ALL_PAT_CAT_2022Q4.csv")
-flu23_1 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q1.csv")
-flu23_2 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q2.csv")
-flu23_3 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q3.csv")
-flu23_4 = read.csv("DSHS/FLU_ALL_PAT_CAT_2023Q4.csv")
-flu24_1 = read.csv("DSHS/FLU_ALL_PAT_CAT_2024Q1.csv")
-flu24_2 = read.csv("DSHS/FLU_ALL_PAT_CAT_2024Q2.csv")
+flu22_3 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2022Q3.csv")
+flu22_4 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2022Q4.csv")
+flu23_1 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2023Q1.csv")
+flu23_2 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2023Q2.csv")
+flu23_3 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2023Q3.csv")
+flu23_4 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2023Q4.csv")
+flu24_1 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2024Q1.csv")
+flu24_2 = read.csv("../DSHS/FLU_ALL_PAT_CAT_2024Q2.csv")
 ```
 
 ```{r}
@@ -123,7 +123,7 @@ city_trend_major = city_trend %>% filter(PAT_City %in% major_cities) %>% mutate(
 
 
 ```{r, cache=TRUE}
-hospitals = read.csv("COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_Facility.csv")
+hospitals = read.csv("../COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_Facility.csv")
 hospitals = hospitals[hospitals$state=="TX",] %>% mutate(city = str_to_title(city))
 ```
 

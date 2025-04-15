@@ -1,0 +1,25 @@
+---
+title: "Week 2"
+author: "Advay Vyas"
+date: "4/15/25"
+output:
+  pdf_document:
+    toc: false
+  html_document:
+    toc: false
+    df_print: paged
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+```
+
