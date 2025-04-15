@@ -121,21 +121,13 @@ city_trend_major = city_trend %>% filter(PAT_City %in% major_cities) %>% mutate(
 
 ```
 
-```{r, fig.height=6, fig.width=10}
-ggplot(city_trend_major, aes(x = quarter, y = total_patients, color = PAT_City, group = PAT_City)) +
-  geom_line(linewidth = 1.2) +
-  geom_point() +
-  theme_minimal(base_size = 14) +
-  labs(title = "Flu Patient Trends Over Time by City", x = "Quarter", y = "Number of Patients", color = "City") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + facet_wrap(~PAT_City, nrow = 2)
-```
 
 ```{r, cache=TRUE}
 hospitals = read.csv("COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_Facility.csv")
 hospitals = hospitals[hospitals$state=="TX",] %>% mutate(city = str_to_title(city))
 ```
 
-```{r, fig.height=6, fig.width=10}
+```{r, fig.height=4, fig.width=10}
 hospitals_major = hospitals %>% filter(city %in% major_cities) %>% mutate(city = factor(city, levels = major_cities))
 desired_columns = c("hospital_pk", "collection_week", "hospital_name", "city", "hospital_subtype", "total_beds_7_day_avg", "total_patients_hospitalized_confirmed_influenza_7_day_sum", "total_patients_hospitalized_confirmed_influenza_7_day_avg")
 
@@ -189,6 +181,16 @@ knitr::kable(unique_hospitals_by_city)
 # keep in mind this is 2022 Q3 -> 2024 Q2
 ```
 
+In the graph below, I think that the more unique hospitals a city has, the more negative the slope from 2022 Q4 to 2023 Q1 is (how fast the patient count goes down is directly related to the amount of hospitals). However, probably would need to check proportion of hospitals to population (hospitals per capita per city maybe?).
+```{r, fig.height=5, fig.width=10}
+ggplot(city_trend_major, aes(x = quarter, y = total_patients, color = PAT_City, group = PAT_City)) +
+  geom_line(linewidth = 1.2) +
+  geom_point() +
+  theme_minimal(base_size = 14) +
+  labs(title = "Flu Patient Trends Over Time by City", x = "Quarter", y = "Number of Patients", color = "City") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + facet_wrap(~PAT_City, nrow = 2)
+```
+
 ```{r, fig.length = 6, fig.width = 10}
 # Step 1: Add quarter column
 hospitals_major_by_q = hospitals_major_by %>%
@@ -216,7 +218,7 @@ ggplot(beds_by_city_quarter, aes(x = quarter, y = total_beds, color = city, grou
     x = "Quarter",
     y = "Total Beds"
   ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 2)) + facet_wrap(~city, nrow=2)
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + facet_wrap(~city, ncol=2)
 
 ```
 
@@ -225,13 +227,17 @@ ggplot(beds_by_city_quarter, aes(x = quarter, y = total_beds, color = city, grou
 flu_long = city_trend_major %>% select(city = PAT_City, quarter, value = total_patients) %>% mutate(metric = "Flu Patients")
 beds_long = beds_by_city_quarter %>% select(city, quarter, value = total_beds) %>% mutate(metric = "Total Beds")
 
+# quarter conversion to numeric
+flu_long = flu_long %>% mutate(quarter_numeric = (as.numeric(substr(quarter, 1, 4)) - 2022) * 4 + as.numeric(substr(quarter, 6, 6)) - 2)
+beds_long = beds_long %>% mutate(quarter_numeric = (as.numeric(substr(quarter, 1, 4)) - 2022) * 4 + as.numeric(substr(quarter, 7, 7)) - 2) %>% filter(quarter_numeric > 0)
+
 combined = bind_rows(flu_long, beds_long)
 
 # Plot both metrics faceted
-ggplot(combined, aes(x = quarter, y = value, color = city, group = city)) +
+ggplot(combined, aes(x = quarter_numeric, y = value, color = city, group = city)) +
   geom_line() +
   geom_point() +
-  facet_wrap(~ metric, scales = "free_y") +
+  facet_wrap(~ metric, scales = "free_y", nrow=2) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
