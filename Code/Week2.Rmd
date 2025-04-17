@@ -4,10 +4,7 @@ author: "Advay Vyas"
 date: "4/15/25"
 output:
   pdf_document:
-    toc: false
-  html_document:
-    toc: false
-    df_print: paged
+    toc: true
 urlcolor: blue
 linkcolor: red
 ---
@@ -16,10 +13,35 @@ linkcolor: red
 knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
 ```
 
+------------------------------------------------------------------------
+
 ```{r, results='hide', warning=FALSE, message=FALSE}
 library(dplyr)
 library(tidyverse)
 library(ggplot2)
 library(lubridate)
 ```
+
+# Introduction
+This week, we need to target why specific pairs of cities have disparities so that we can generalize in the following weeks. In particular, why do Fort Worth and Dallas (nearby cities) have differences in their flu patients over time. We could use the Social Vulnerability Index (SVI) as a key feature in our analysis, provided we understand how it is calculated and extract the relevant information.
+
+As far as changing statistical techniques, we'd also like to focus more on weekly time-series data, normalizing statistics per capita, and trying to visualize this data with maps. Time permitting, I'd also like to take a look at last week's hypothesis of faster "recovery time" with more hospitals (Houston, Dallas).
+
+\newpage
+
+# Improving statistical analysis and data cleaning
+## Weekly time-series data
+## Normalizing per capita
+## Visualizing with maps
+
+# Social Vulnerability Index
+## How it is calculated
+## Why it's relevant + trends
+
+# Fort Worth vs. Dallas
+## Demographics
+## Healthcare access
+## Conclusion
+
+# Last week's hypothesis and relevance
 
