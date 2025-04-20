@@ -109,10 +109,46 @@ regular + normalized
 What does this graph show us? Let's unpack our findings real quick. Clearly, we can see that the trends are much more visible on the right hand side. Corpus Christi, Houston, and San Antonio have the most beds per 100,000 while Austin and El Paso have the fewest. We can also see the Ft. Worth vs Dallas comparison here (a little spoiler for the analysis that's later in the report).
 
 ## Comparing state-wide
-## Normalizing per capita
+```{r, cache=TRUE}
+state = read.csv("../COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State.csv")
+state = state[state$state == "TX",]
+```
+
+```{r}
+state_important = state[,c(2,3,4,5,11,13)]
+colnames(state_important) = c("day", "shortage_yes", "shortage_no", "shortage_not_reported", "beds", "beds_used")
+
+state_important = state_important[state_important$beds > 100,]
+
+state_important$shortage_prop = (state_important$shortage_yes) / (state_important$shortage_no + state_important$shortage_not_reported)
+state_important$beds_used_prop = (state_important$beds_used) / (state_important$beds)
+state_important$day = as.Date(state_important$day)
+
+state_important = state_important[,c(1, 5, 7, 8)]
+```
+
+```{r}
+texas_pop = read.csv("../texas_pop.csv")
+texas_pop = texas_pop[,c(1,2)]
+
+texas_pop$population = as.numeric(gsub("[^0-9.-]", "", texas_pop$population))
+
+state_important = state_important %>% mutate(year = year(day)) %>% left_join(texas_pop, by = "year") %>% mutate(beds_per_100k = beds / population * 100000)
+```
+
+```{r, fig.width = 10, fig.height = 8, message = FALSE}
+beds = ggplot(state_important, aes(x=day, y=beds_per_100k)) + geom_line() + geom_smooth() + labs(title = "Texas Hospital Beds per 100,000 over Time", x = "Year", y= "Beds per 100,000")
+beds_used = ggplot(state_important, aes(x=day, y=beds_used_prop)) + geom_line() + geom_smooth() + labs(title = "Proportion of Used Texas Hospital Beds over Time", x = "Year", y= "Proportion of Beds Used")
+shortage = ggplot(state_important, aes(x=day, y=shortage_prop)) + geom_line() + geom_smooth() + labs(title = "Proportion of Critical Shortages over Time", x = "Year", y= "Proportion of Critical Shortages")
+
+beds / beds_used / shortage
+```
+
 ## Visualizing with maps
 
 # Social Vulnerability Index
+![SVI Map 2022](../svi_tx_2022.jpg)
+
 ## How it is calculated
 ## Why it's relevant + trends
 
