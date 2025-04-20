@@ -148,13 +148,36 @@ beds / beds_used / shortage
 
 # Social Vulnerability Index
 ![SVI Map 2022](../svi_tx_2022.jpg)
-
 ## How it is calculated
+
 ## Why it's relevant + trends
 
 # Fort Worth vs. Dallas
+![SVI Map of the DFW Area](../svi_dfw.png)
 ## Demographics
+
 ## Healthcare access
+```{r}
+hospitals_by_year = hospitals_major %>%
+  mutate(year = year(week)) %>%  # Extract year from date column
+  group_by(id, year, name, city) %>%
+  summarise(
+    beds_avg = mean(beds_avg, na.rm = TRUE),
+    flu_sum = mean(flu_sum, na.rm = TRUE),
+    flu_avg = mean(flu_avg, na.rm = TRUE),
+    entries = n(),
+    .groups = "drop"
+  )
+
+unique_hospitals_by_city = hospitals_by_year %>%
+  filter(city %in% c("Dallas", "Fort Worth")) %>%
+  group_by(city) %>%
+  summarise(unique_hospitals = n_distinct(id), .groups = "drop") %>% 
+  arrange(desc(unique_hospitals))
+
+knitr::kable(unique_hospitals_by_city)
+```
+
 ## Conclusion
 
 # Last week's hypothesis and relevance
