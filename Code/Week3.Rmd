@@ -1,0 +1,36 @@
+---
+title: "Week 3"
+author: "Advay Vyas"
+date: "4/22/25"
+output:
+  pdf_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+```
+
+# Introduction
+This week, we want to understand disparities in flu patients by city with the help of normalization. From our very helpful population dataset, we'll take a look at major Texas cities and identify any trends. Perhaps, we can investigate flu season by flu season in time-series data as well as looking at qualitative explanations for the rise in flu patients. I'll also look at temperature data and try to graph that data over time and space (https://www.weather.gov/wrh/climate?wfo=ewx) and I'll also take a look at healthcare metrics like one from the City Health Dashboard and I also want to maybe find a dataset that holds Texas flu vaccinations by city.
+
+\newpage
+
+# Normalizing flu data by population
+# City Health Dashboard
+# Temperature
+# Flu vaccination rate
+# Flu legislation?
+# Qualitative data to explain trends
