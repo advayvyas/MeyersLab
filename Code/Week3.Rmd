@@ -29,14 +29,6 @@ This week, we want to understand disparities in flu patients by city with the he
 \newpage
 
 # Normalizing flu data by population
-
-```{r, results='hide', warning=FALSE, message=FALSE}
-library(dplyr)
-library(tidyverse)
-library(ggplot2)
-library(lubridate)
-```
-
 ```{r}
 facility = read.csv("../DSHS/thcic-ids_city_county_crosswalk.csv")
 facility_filtered = facility %>%
@@ -169,9 +161,8 @@ city_pop = city_pop[c(52, 270, 44, 237, 340, 972, 497, 376),]
 city_pop$City = c("Austin", "Dallas", "Arlington", "Corpus Christi", "El Paso", "San Antonio", "Houston", "Fort Worth")
 city_pop = city_pop %>%  mutate(across(2:5, ~ as.numeric(gsub("[^0-9.-]", "", .)))) %>% arrange(desc(1))
 city_pop_long = city_pop %>% pivot_longer(-City, names_to = "year", values_to = "population") %>% mutate(year = as.integer(year))
-city_pop_long <- rbind(city_pop_long, pop_data_24)
+city_pop_long = rbind(city_pop_long, pop_data_24)
 ```
-
 
 ```{r}
 city_trend_major = city_trend %>% filter(PAT_City %in% major_cities) %>% mutate(PAT_City = factor(PAT_City, levels = major_cities))
@@ -180,26 +171,92 @@ city_trend_major = city_trend_major %>% left_join(city_pop_long, by = c("PAT_Cit
   mutate(patients_per_100k = total_patients / population * 100000)
 ```
 
+## Analyzing the extreme cities
+```{r, fig.height =10, fig.width=12}
+ggplot(city_trend_major, aes(x = quarter, y = patients_per_100k, group = PAT_City, color = PAT_City)) +
+  geom_line(linewidth = 1,) +
+  geom_point() +
+  labs(title = "Flu patients per 100,000 over time by city", x = "Quarter", y = "Patients per 100,000", color = "City") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+## Comparing regular counts and normalized counts
 ```{r, fig.height=15, fig.width=10}
 regular = ggplot(city_trend_major, aes(x = quarter, y = total_patients, group = PAT_City)) +
   geom_line(linewidth = 1.2, color = "blue") +
   geom_point(color = "blue") +
-  theme_minimal(base_size = 14) +
-  labs(title = "Flu Patients Over Time by City", x = "Quarter", y = "Number of Patients", color = "City") +
+  labs(title = "Patients over time by city", x = "Quarter", y = "Flu patients", color = "City") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + facet_wrap(~PAT_City, nrow = 8)
 
 normalized = ggplot(city_trend_major, aes(x = quarter, y = patients_per_100k, group = PAT_City)) +
   geom_line(linewidth = 1.2, color = "red") +
   geom_point(color = "red") +
-  theme_minimal(base_size = 14) +
-  labs(title = "Flu Patients per 100,000 Over Time by City", x = "Quarter", y = "Number of Patients per 100,000", color = "City") +
+  labs(title = "Patients per 100,000 over time by city", x = "Quarter", y = "Flu patients per 100,000", color = "City") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + facet_wrap(~PAT_City, nrow = 8)
 
 regular + normalized
+```
+
+# City Health Dashboard
+```{r}
+city_health = read.csv("../texas_cityhealth.csv")
+knitr::kable(city_health %>% filter(Metric == "Children in Poverty (%)") %>% select(City, Value) %>% arrange(Value), caption = "Cities by % of Children in Poverty", col.names = c("City", "Children in Poverty (%)"))
+knitr::kable(city_health %>% filter(Metric == "Uninsured (%)") %>% select(City, Value) %>% arrange(Value), caption = "Cities by % Uninsured", col.names = c("City", "Uninsured (%)"))
+knitr::kable(city_health %>% filter(Metric == "Routine Checkup (%)") %>% select(City, Value) %>% arrange(desc(Value)), caption = "Cities by % that get Routine Checkups", col.names = c("City", "Routine Checkup (%)"))
+```
+
+# Temperature
+## Temperature by county
+```{r}
+counties = c("Harris County", "Bexar County", "Dallas County", "Travis County", "Tarrant County", "El Paso County", "Tarrant County", "Nueces County")
+
+corresponding_cities = c(
+  "San Antonio",       # Bexar County
+  "Dallas",            # Dallas County
+  "El Paso",           # El Paso County
+  "Houston",           # Harris County
+  "Corpus Christi",    # Nueces County
+  "Fort Worth & Arlington", # Tarrant County
+  "Austin"             # Travis County
+)
+```
+
+```{r}
+twenty = read.csv("../Temperature/2020.csv")
+twenty$Year = 2020
+
+twenty_one = read.csv("../Temperature/2021.csv")
+twenty_one$Year = 2021
+
+twenty_two = read.csv("../Temperature/2022.csv")
+twenty_two$Year = 2022
+
+twenty_three = read.csv("../Temperature/2023.csv")
+twenty_three$Year = 2023
+
+twenty_four = read.csv("../Temperature/2024.csv")
+twenty_four$Year = 2024
+
+weather = rbind(
+  twenty,
+  twenty_one,
+  twenty_two,
+  twenty_three,
+  twenty_four
+)
+
+weather = weather %>% select(Name, Value, Year) %>% filter(Name %in% counties) %>% arrange(desc(Name))
+colnames(weather) = c("county", "avg_temp", "year")
+
+write_csv(weather, "../texas_weather.csv")
+```
+
+```{r, fig.width = 10, fig.height = 5}
+ggplot(weather, aes(x=year, y=avg_temp, color = county)) + geom_line(linewidth = 1) + labs(title = "Average Temperature by Year by County", x = "Year", y = "Average Temperature (year)")
 
 ```
-# City Health Dashboard
-# Temperature
+## How flu and temperature are related
+
 # Flu vaccination rate
 # Flu legislation?
 # Qualitative data to explain trends
