@@ -172,16 +172,18 @@ city_trend_major = city_trend_major %>% left_join(city_pop_long, by = c("PAT_Cit
 ```
 
 ## Analyzing the extreme cities
-```{r, fig.height =10, fig.width=12}
+```{r, fig.height=6, fig.width=12}
 ggplot(city_trend_major, aes(x = quarter, y = patients_per_100k, group = PAT_City, color = PAT_City)) +
   geom_line(linewidth = 1,) +
   geom_point() +
   labs(title = "Flu patients per 100,000 over time by city", x = "Quarter", y = "Patients per 100,000", color = "City") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
 ```
+I mainly created this graph so that I could look at these two flu seasons and examine the highest and lowest flu patients per 100,000. For the first flu cycle, we can see that Fort Worth and Corpus Christi had the highest patients per 100,000 while Austin clearly had the lowest each season, followed by Arlington in the first and Houston in the second cycle. I'm not sure why Austin has these low values but Corpus Christi might be a hot tourist spot during the holidays, which would raise flu cases without raising population, so that could be a contributing factor.
+
 
 ## Comparing regular counts and normalized counts
-```{r, fig.height=15, fig.width=10}
+```{r, fig.height=12, fig.width=10}
 regular = ggplot(city_trend_major, aes(x = quarter, y = total_patients, group = PAT_City)) +
   geom_line(linewidth = 1.2, color = "blue") +
   geom_point(color = "blue") +
@@ -196,14 +198,32 @@ normalized = ggplot(city_trend_major, aes(x = quarter, y = patients_per_100k, gr
 
 regular + normalized
 ```
+As for the normalized metrics, this is pretty similar to the last graph but we see that places like Corpus Christi, El Paso, and Fort Worth are much more accurately represented by the normalized values. Looks like most major Texas cities share this same pattern and similar spike heights as well.
 
 # City Health Dashboard
+The City Health Dashboard compiles a various set of metrics yearly (the most recent being 2022) and I have selected three of those metrics that seemed the most relevant: **Percentage of Children in Poverty**, **Uninsured Percentage**, and **Routine Checkup Percentage**
 ```{r}
 city_health = read.csv("../texas_cityhealth.csv")
-knitr::kable(city_health %>% filter(Metric == "Children in Poverty (%)") %>% select(City, Value) %>% arrange(Value), caption = "Cities by % of Children in Poverty", col.names = c("City", "Children in Poverty (%)"))
-knitr::kable(city_health %>% filter(Metric == "Uninsured (%)") %>% select(City, Value) %>% arrange(Value), caption = "Cities by % Uninsured", col.names = c("City", "Uninsured (%)"))
-knitr::kable(city_health %>% filter(Metric == "Routine Checkup (%)") %>% select(City, Value) %>% arrange(desc(Value)), caption = "Cities by % that get Routine Checkups", col.names = c("City", "Routine Checkup (%)"))
 ```
+
+## Percentage of Children in Poverty  
+```{r}
+knitr::kable(city_health %>% filter(Metric == "Children in Poverty (%)") %>% select(City, Value) %>% arrange(Value), caption = "Cities by % of Children in Poverty in 2022", col.names = c("City", "Children in Poverty (%)"))
+```
+I don't think this has a large amount of correlation with flu patient counts, but Austin does seem to have the lowest percentage of children in poverty,
+
+
+## Uninsured Percentage
+```{r}
+knitr::kable(city_health %>% filter(Metric == "Uninsured (%)") %>% select(City, Value) %>% arrange(Value), caption = "Cities by % Uninsured in 2022", col.names = c("City", "Uninsured (%)"))
+```
+I think this metric might have a greater effect because insurance does decrease the cost of a flu vaccine. I think Austin being at the top of the list again is very telling because even though this is only 2022 data.
+
+## Routine Checkup Percentage
+```{r}
+knitr::kable(city_health %>% filter(Metric == "Routine Checkup (%)") %>% select(City, Value) %>% arrange(desc(Value)), caption = "Cities by % that get Routine Checkups in 2022", col.names = c("City", "Routine Checkup (%)"))
+```
+Lastly, this seems like a metric that might decrease total flu patients when the flu is in full force, but not so much for vaccination. Regardless, Austin hits the bottom of this list while San Antonio takes a surprising spot at the top of the table.
 
 # Temperature
 ## Temperature by county
@@ -251,12 +271,41 @@ colnames(weather) = c("county", "avg_temp", "year")
 write_csv(weather, "../texas_weather.csv")
 ```
 
-```{r, fig.width = 10, fig.height = 5}
-ggplot(weather, aes(x=year, y=avg_temp, color = county)) + geom_line(linewidth = 1) + labs(title = "Average Temperature by Year by County", x = "Year", y = "Average Temperature (year)")
-
+```{r, fig.width = 8, fig.height = 5}
+ggplot(weather, aes(x=year, y=avg_temp, color = county)) + geom_line(linewidth = 1) + labs(title = "Average Temperature by Year by County", x = "Year", y = "Average Temperature (year)") + geom_point()
 ```
-## How flu and temperature are related
 
-# Flu vaccination rate
-# Flu legislation?
-# Qualitative data to explain trends
+
+## How flu and temperature are related
+Generally, the influenza virus thrives in cooler, drier environments while warmer, humid environments weaken the virus. Nueces County is the highest in terms of heat and Corpus Christi does not follow the general trend. The average temperature over the year probably doesn't make that much of an effect but it might explain northern cities having more flu patients than southern cities like Tarrant County (Arlington/Ft. Worth) vs Bexar County (San Antonio).
+
+# Flu vaccination coverage
+![Flu vaccination coverage map of Texas](../texas_flu_vax.png)
+The above image is a flu vaccination coverage map of Texas, shaded by the county's flu vaccination coverage (darker is better).
+
+## Coverage data
+```{r}
+corresponding_cities_vax = c(
+  "Houston",           # Harris County
+  "San Antonio",       # Bexar County
+  "Dallas",            # Dallas County
+  "Austin",            # Travis County
+  "Fort Worth & Arlington", # Tarrant County
+  "El Paso",           # El Paso County
+  "Corpus Christi"     # Nueces County
+)
+
+texas_flu_vax = data.frame(
+  county = unique(counties),
+  corresponding_cities = corresponding_cities_vax,
+  coverage_rate = c(38.4, 41.4, 39.9, 42.5, 39.4, 38, 34.1)
+) %>% arrange(desc(coverage_rate))
+
+knitr::kable(texas_flu_vax, caption = "Flu Vaccination Coverage Estimates by County in 2022", col.names = c("County", "Corresponding Cities", "Coverage Rate"))
+```
+## Analysis
+Aha! Looks like this is our magic weapon! Corpus Christi sits at the bottom of the table with cities like El Paso and Houston while Austin rests comfortably at the top with cities like San Antonio. If you reference the first figure in this week's report, you'll find this is the most accurate predictor we've examined so far.
+
+# Conclusion
+We found the normalized versions of flu patients, compared them across cities, and then attempted to find predictors for the trends we saw. We looked at 3 City Health Dashboard metrics, temperature, and flu vaccination coverage. I think they all had some weak/mid correlation but flu vaccination coverage had the clearest trends by far (which makes sense). Next week, we might look at more predictors or dig further into health insurance prevalence and flu vaccination coverage.
+
