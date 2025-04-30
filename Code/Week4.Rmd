@@ -1,0 +1,50 @@
+---
+title: "Week 4"
+author: "Advay Vyas"
+date: "4/29/25"
+output:
+  pdf_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+```
+
+# Introduction
+This week, we are going to look into vaccination and quantify the correlation between vaccination and flu patients. We will also attempt to look at the new datasets for specifically flu patients and maybe make a correlation matrix to find any variables that match up well. Also, we want to look into why cities like Dallas have much higher flu patients per capita compared to ciites like Austin. We can also look at why cities like Houston and San Antonio have different numbers every cycle.
+
+\newpage
+
+# Vaccination coverage correlation
+## New data
+## Correlation
+
+# New flu patient dataset
+## Correlation matrix
+## Analysis
+
+# City comparisons
+## Dallas vs. Austin
+### Vaccination coverage
+### Demographics
+### Politics and other qualitative aspects
+
+## Cycle by cycle analysis
+## Important changes in major Texas cities (2022-2024)
+
+## Key statistics by city
+
+# Conclusion
