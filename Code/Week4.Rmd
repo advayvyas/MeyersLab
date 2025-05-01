@@ -21,6 +21,7 @@ library(tidyverse)
 library(ggplot2)
 library(lubridate)
 library(patchwork)
+library(corrplot)
 ```
 
 # Introduction
@@ -28,8 +29,70 @@ This week, we are going to look into vaccination and quantify the correlation be
 
 \newpage
 
+# Correlation with flu peaks
+```{r}
+city_trend_major = read.csv("../texas_city_trend_major.csv") 
+colnames(city_trend_major) = c("city", "year", "quarter", "total_patients", "population", "patients_per_100k")
+```
+
+## Isolating the peaks
+```{r, fig.height=6, fig.width=12}
+ggplot(city_trend_major, aes(x = quarter, y = patients_per_100k, group = city, color = city)) +
+  geom_line(linewidth = 1,) +
+  geom_point() +
+  labs(title = "Flu patients per 100,000 over time by city", x = "Quarter", y = "Patients per 100,000", color = "City") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme_bw()
+```
+The peaks are 2022Q4 and 2024Q1, let's isolate those 2 and create a table of correlation between the two, separated by each peak since I only have reliable 2022 data.
+
+```{r}
+first_spike = city_trend_major %>% filter(quarter == "2022Q4") %>% select(city, total_patients, population, patients_per_100k)
+second_spike = city_trend_major %>% filter(quarter == "2024Q1") %>% select(city, total_patients, population, patients_per_100k)
+```
+
+Let's get some bar graph representations of our data so we can interpret it a little better.
+```{r, fig.height = 7, fig.width = 8}
+first = ggplot(first_spike) + geom_col(aes(x = reorder(city, patients_per_100k), y = patients_per_100k), fill = "skyblue", col="black") + 
+  labs(title = "Flu Patients per 100,000 during First Spike (2022 Q4)", x = "City", y = "Flu Patients per 100,000") + theme_bw()
+
+second = ggplot(second_spike) + geom_col(aes(x = reorder(city, patients_per_100k), y = patients_per_100k), fill = "skyblue", col="black") + 
+  labs(title = "Flu Patients per 100,000 during First Spike (2024 Q1)", x = "City", y = "Flu Patients per 100,000") + theme_bw()
+first / second
+```
+
+Now, let's plot the points and color by city to see changes from spike to spike.
+```{r, fig.height = 4, fig.width = 8}
+ggplot(city_trend_major %>% filter(quarter == "2022Q4" | quarter == "2024Q1")) + geom_col(aes(x = reorder(city, patients_per_100k), y = patients_per_100k, fill = quarter), position = position_dodge2(preserve = "single"), col="black") + 
+  labs(title = "Flu Patients per 100,000 during Spikes", x = "City", y = "Flu Patients per 100,000", fill = "Quarter") + theme_bw()
+```
+
+```{r, warning=FALSE, message=FALSE}
+city_health = read.csv("../texas_cityhealth.csv") %>% pivot_wider(names_from = Metric, values_from = Value) # 2022
+colnames(city_health)[1] = "city"
+
+flu_vax = read.csv("../texas_flu_vax.csv") # 2022
+
+first_spike = first_spike %>% left_join(city_health) %>% left_join(flu_vax[,2:3])
+```
+
+```{r, fig.height = 7, fig.width = 7}
+numeric_data = first_spike[sapply(first_spike, is.numeric)]
+cor_matrix = cor(numeric_data)
+corrplot.mixed(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, upper="color", lower="number", diag="l")
+```
+Note that for the coverage rate graph, the trend would be even stronger if Fort Worth and Arlington didn't share the same coverage rate by virtue of being in the same county - this first graph shows a very strong trend.
+```{r, fig.height = 4, fig.width = 7, message=FALSE}
+ggplot(first_spike, aes(x=coverage_rate, y=patients_per_100k, col=city)) + geom_point(size=2) + geom_smooth(method = "lm", col = "black", se=FALSE) + 
+  labs(title = "Vaccination Coverage Rate vs. Flu Patients per 100,000", x="Coverage Rate", y="Patients per 100,000", col = "City") + theme_bw()
+
+ggplot(first_spike, aes(x=`Routine Checkup (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + geom_smooth(method = "lm", col = "black", se=FALSE) +
+  labs(title = "Routine Checkup (%) vs. Flu Patients per 100,000", x=  "Routine Checkup (%)", y ="Patients per 100,000", col = "City") + theme_bw()
+
+ggplot(first_spike, aes(x=`Uninsured (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + geom_smooth(method = "lm", col = "black", se=FALSE) +
+  labs(title = "Uninsured (%) vs. Flu Patients per 100,000", x = "Uninsured (%)", y = "Patients per 100,000", col = "City") + theme_bw()
+```
+
 # Vaccination coverage correlation
-## New data
 ## Correlation
 
 # New flu patient dataset
