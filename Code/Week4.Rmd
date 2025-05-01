@@ -22,6 +22,7 @@ library(ggplot2)
 library(lubridate)
 library(patchwork)
 library(corrplot)
+library(mosaic)
 ```
 
 # Introduction
@@ -29,13 +30,13 @@ This week, we are going to look into vaccination and quantify the correlation be
 
 \newpage
 
-# Correlation with flu peaks
+# Flu spikes
 ```{r}
 city_trend_major = read.csv("../texas_city_trend_major.csv") 
 colnames(city_trend_major) = c("city", "year", "quarter", "total_patients", "population", "patients_per_100k")
 ```
 
-## Isolating the peaks
+## Isolating the seasonal spikes
 ```{r, fig.height=6, fig.width=12}
 ggplot(city_trend_major, aes(x = quarter, y = patients_per_100k, group = city, color = city)) +
   geom_line(linewidth = 1,) +
@@ -43,8 +44,11 @@ ggplot(city_trend_major, aes(x = quarter, y = patients_per_100k, group = city, c
   labs(title = "Flu patients per 100,000 over time by city", x = "Quarter", y = "Patients per 100,000", color = "City") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme_bw()
 ```
-The peaks are 2022Q4 and 2024Q1, let's isolate those 2 and create a table of correlation between the two, separated by each peak since I only have reliable 2022 data.
+We can clearly see that the peaks of each season ("spikes") are at 2022Q4 and 2024Q1. Now, let's grab those specific values from the first and second spike to run statistical analysis on. I'd like to preface by saying that the correlation matrix will be much more accurate for 2022 since I only have 2022 data for city health and flu vaccination coverage.
 
+\newpage
+
+## Comparing each spike
 ```{r}
 first_spike = city_trend_major %>% filter(quarter == "2022Q4") %>% select(city, total_patients, population, patients_per_100k)
 second_spike = city_trend_major %>% filter(quarter == "2024Q1") %>% select(city, total_patients, population, patients_per_100k)
@@ -59,13 +63,15 @@ second = ggplot(second_spike) + geom_col(aes(x = reorder(city, patients_per_100k
   labs(title = "Flu Patients per 100,000 during First Spike (2024 Q1)", x = "City", y = "Flu Patients per 100,000") + theme_bw()
 first / second
 ```
+Looks like small changes in each spike, but Austin has the least both times (this aligns with what we saw last week). Now, let's compare the spikes side by side to get a better feel.
 
-Now, let's plot the points and color by city to see changes from spike to spike.
 ```{r, fig.height = 4, fig.width = 8}
 ggplot(city_trend_major %>% filter(quarter == "2022Q4" | quarter == "2024Q1")) + geom_col(aes(x = reorder(city, patients_per_100k), y = patients_per_100k, fill = quarter), position = position_dodge2(preserve = "single"), col="black") + 
   labs(title = "Flu Patients per 100,000 during Spikes", x = "City", y = "Flu Patients per 100,000", fill = "Quarter") + theme_bw()
 ```
+I don't see any specific trend with 2022 vs. 2024 (technically end of 2023, maybe it was just a late flu season). Austin and Dallas look about even both times, El Paso, San Antonio, Corpus Christi, and Arlington all increased while Fort Worth and Houston decreased - could look into why that is.
 
+# Correlation with other variables
 ```{r, warning=FALSE, message=FALSE}
 city_health = read.csv("../texas_cityhealth.csv") %>% pivot_wider(names_from = Metric, values_from = Value) # 2022
 colnames(city_health)[1] = "city"
@@ -75,29 +81,96 @@ flu_vax = read.csv("../texas_flu_vax.csv") # 2022
 first_spike = first_spike %>% left_join(city_health) %>% left_join(flu_vax[,2:3])
 ```
 
+## Correlation matrix
 ```{r, fig.height = 7, fig.width = 7}
 numeric_data = first_spike[sapply(first_spike, is.numeric)]
 cor_matrix = cor(numeric_data)
 corrplot.mixed(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, upper="color", lower="number", diag="l")
 ```
-Note that for the coverage rate graph, the trend would be even stronger if Fort Worth and Arlington didn't share the same coverage rate by virtue of being in the same county - this first graph shows a very strong trend.
-```{r, fig.height = 4, fig.width = 7, message=FALSE}
-ggplot(first_spike, aes(x=coverage_rate, y=patients_per_100k, col=city)) + geom_point(size=2) + geom_smooth(method = "lm", col = "black", se=FALSE) + 
+Above is the correlation matrix for City Health metrics, flu vaccination data, and patients per 100,000 for the first spike (2022Q4). We're looking for high correlation values with patients per 100k, which we see from Routine Checkups (%) at 0.51, Uninsured (%) at 0.44, and coverage_rate at -0.55.
+
+\newpage
+
+## Vaccination coverage rate
+Note that for the coverage rate graph, the trend would be even stronger if Fort Worth and Arlington didn't share the same coverage rate by virtue of being in the same county - this first graph shows a very strong trend. 
+```{r, fig.height = 3, fig.width = 7, message=FALSE}
+ggplot(first_spike, aes(x=coverage_rate, y=patients_per_100k, col=city)) + geom_point(size=2) + 
+  geom_smooth(method = "lm", col = "black", se=FALSE) + 
   labs(title = "Vaccination Coverage Rate vs. Flu Patients per 100,000", x="Coverage Rate", y="Patients per 100,000", col = "City") + theme_bw()
+```
+In fact, removing those two cities results in a correlation of -0.75.
+```{r, fig.height = 3, fig.width = 7, message=FALSE}
+ggplot(first_spike[c(2:5,7:8),], aes(x=coverage_rate, y=patients_per_100k, col=city)) + geom_point(size=2) + 
+  geom_smooth(method = "lm", col = "black", se=FALSE) + 
+  labs(title = "Vaccination Coverage Rate vs. Flu Patients per 100,000", x="Coverage Rate", y="Patients per 100,000", col = "City") + theme_bw()
+```
+\newpage
 
-ggplot(first_spike, aes(x=`Routine Checkup (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + geom_smooth(method = "lm", col = "black", se=FALSE) +
+## Routine checkups
+This graph kind of destroys any correlation this has because Austin "anchors" this line to have a positive slope. Furthermore, Austin actually has the least amount of Routine Checkup (%) so we should expect this graph to have a negative slope (more checkups means less patients). 
+```{r, fig.height = 3, fig.width = 7, message=FALSE}
+ggplot(first_spike, aes(x=`Routine Checkup (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + 
+  geom_smooth(method = "lm", col = "black", se=FALSE) +
   labs(title = "Routine Checkup (%) vs. Flu Patients per 100,000", x=  "Routine Checkup (%)", y ="Patients per 100,000", col = "City") + theme_bw()
+```
+Let's try this graph without Austin and see what we get. This graph makes a lot more sense, not sure how accurate it is - we get a correlation of -0.51 after removing Austin (an upgrade over the previous 0.51, ironically just a flipped sign).
+```{r, fig.height = 3, fig.width = 7, message=FALSE}
+ggplot(first_spike[c(1,3:8),], aes(x=`Routine Checkup (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + 
+  geom_smooth(method = "lm", col = "black", se=FALSE) +
+  labs(title = "Routine Checkup (%) vs. Flu Patients per 100,000 w/out Austin", x=  "Routine Checkup (%)", 
+       y ="Patients per 100,000", col = "City") + theme_bw()
+```
+\newpage
 
-ggplot(first_spike, aes(x=`Uninsured (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + geom_smooth(method = "lm", col = "black", se=FALSE) +
+## Insurance
+This variable looks like a general trend again anchored by Austin being very low. This time, the trend appears to make sense since less uninsured people should lead to less flu patients,
+```{r, fig.height = 3, fig.width = 7, message=FALSE}
+ggplot(first_spike, aes(x=`Uninsured (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + 
+  geom_smooth(method = "lm", col = "black", se=FALSE) +
   labs(title = "Uninsured (%) vs. Flu Patients per 100,000", x = "Uninsured (%)", y = "Patients per 100,000", col = "City") + theme_bw()
 ```
-
-# Vaccination coverage correlation
-## Correlation
-
-# New flu patient dataset
-## Correlation matrix
+Aha! Without Austin, the correlation vanishes and is back to wishy-washy stuff. I definitely don't see a trend here, for what it's worth.
+```{r, fig.height = 3, fig.width = 7, message=FALSE}
+ggplot(first_spike[c(1,3:8),], aes(x=`Uninsured (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + 
+  geom_smooth(method = "lm", col = "black", se=FALSE) +
+  labs(title = "Uninsured (%) vs. Flu Patients per 100,000", x = "Uninsured (%)", y = "Patients per 100,000", col = "City") + theme_bw()
+```
+\newpage
 ## Analysis
+```{r, cache = TRUE}
+coverage_boot = do(10000) * {
+  model = lm(patients_per_100k ~ coverage_rate, data = mosaic::resample(first_spike))
+  coef(model)[2]
+}
+```
+
+From this correlation matrix, I think we have sufficiently proved that vaccination coverage rate is absolutely crucial to understanding how many flu patients appear (at least in the 2022 spike). Furthermore, we can train a linear regression model and bootstrap the coefficient to get `r round(mean(coverage_boot$coverage_rate), 2)` as implying that with every 1% increase in flu vaccination coverage rate, the number of flu patients per 100,000 reduces by around 2.
+
+```{r, fig.height = 3, fig.width = 6}
+ggplot(coverage_boot) + geom_histogram(aes(x=coverage_rate), color = "black", fill = "skyblue", bins=50) + 
+  geom_vline(xintercept=mean(coverage_boot$coverage_rate), color = "red") + 
+  labs(title = "Bootstrapped sampling distribution of coverage_rate coefficient", x = "coverage_rate", y = "Frequency") + theme_bw()
+```
+
+```{r, cache = TRUE}
+checkup_boot = do(10000) * {
+  model = lm(patients_per_100k ~ `Routine Checkup (%)`, data = mosaic::resample(first_spike[c(1,3:8),]))
+  coef(model)[2]
+}
+
+names(checkup_boot)[1] = "routine_checkup"
+checkup_boot = na.omit(checkup_boot)
+```
+
+For cities that are not Austin, the routine checkup % seems to make a difference, with more routine checkups implying less flu patients. We'll now do the same bootstrapping as before for this variable, except this time around we only resample from cities that are not Austin. Now, we get the value `r round(mean(checkup_boot$routine_checkup), 2)` as implying that with every 1% increase in the percent of the population that get routine checkups, the number of flu patients per 100,000 reduces by around 6 to 7.
+
+```{r, fig.height = 3, fig.width = 6}
+ggplot(checkup_boot) + geom_histogram(aes(x=routine_checkup), color = "black", fill = "skyblue", bins=50) + 
+  geom_vline(xintercept=mean(checkup_boot$routine_checkup), color = "red") + 
+  labs(title = "Bootstrapped sampling distribution of routine_checkup coefficient", x = "routine_checkup", y = "Frequency") + theme_bw()
+```
+
+Lastly, uninsured % seems to have no substantial difference, so we ignore this.
 
 # City comparisons
 ## Dallas vs. Austin
@@ -107,7 +180,7 @@ ggplot(first_spike, aes(x=`Uninsured (%)`, y=patients_per_100k, col=city)) + geo
 
 ## Cycle by cycle analysis
 ## Important changes in major Texas cities (2022-2024)
-
+imma make a table of the pre and post and then the delta and then talk about major changes
 ## Key statistics by city
 
 # Conclusion
