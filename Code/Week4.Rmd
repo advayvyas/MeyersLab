@@ -123,13 +123,13 @@ ggplot(first_spike[c(1,3:8),], aes(x=`Routine Checkup (%)`, y=patients_per_100k,
 \newpage
 
 ## Insurance
-This variable looks like a general trend again anchored by Austin being very low. This time, the trend appears to make sense since less uninsured people should lead to less flu patients,
+This variable looks like a general trend again anchored by Austin being very low. This time, the trend appears to make sense since less uninsured people should lead to less flu patients.
 ```{r, fig.height = 3, fig.width = 7, message=FALSE}
 ggplot(first_spike, aes(x=`Uninsured (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + 
   geom_smooth(method = "lm", col = "black", se=FALSE) +
   labs(title = "Uninsured (%) vs. Flu Patients per 100,000", x = "Uninsured (%)", y = "Patients per 100,000", col = "City") + theme_bw()
 ```
-Aha! Without Austin, the correlation vanishes and is back to wishy-washy stuff. I definitely don't see a trend here, for what it's worth.
+Aha! Without Austin, the correlation vanishes and is back to the wrong signed slope. I definitely don't see a trend here, for what it's worth. 
 ```{r, fig.height = 3, fig.width = 7, message=FALSE}
 ggplot(first_spike[c(1,3:8),], aes(x=`Uninsured (%)`, y=patients_per_100k, col=city)) + geom_point(size=2) + 
   geom_smooth(method = "lm", col = "black", se=FALSE) +
@@ -175,12 +175,60 @@ Lastly, uninsured % seems to have no substantial difference, so we ignore this.
 # City comparisons
 ## Dallas vs. Austin
 ### Vaccination coverage
-### Demographics
-### Politics and other qualitative aspects
+The defining factor in this comparison is the flu vaccination coverage rate, which is 42.5% for Austin and 39.9% for Dallas. Given that Dallas has a larger population by about a quarter of a million, this is a significant gap in flu patients and still a gap in patients per 100,000.
 
-## Cycle by cycle analysis
+### Demographics
+Austin tends to have a younger population than Dallas, which could also explain the lack of flu patients since younger people would be less likely to check into a hospital for influenza.
+
+### Politics
+Austin is significantly more Democratic-leaning (blue) than Dallas, which might explain the higher vaccination coverage numbers.
+
 ## Important changes in major Texas cities (2022-2024)
-imma make a table of the pre and post and then the delta and then talk about major changes
-## Key statistics by city
+### Healthcare Access
+
+**2022**
+
+Emergency departments and urgent care centers across major metros were overcrowded due to simultaneous surges of influenza, COVID‑19, and RSV.
+
+Travis County clinics in Austin saw influenza‑like illness visits spike in October 2022—the earliest flu season start since at least 2018 - straining local healthcare capacity. (https://www.axios.com/local/austin/2022/12/06/covid-19-flu-rsv-rise-austin).
+
+In Houston, approximately 7% of all patient visits in mid‑November 2022 were influenza diagnoses, significantly straining local ER capacity.(https://www.axios.com/local/houston/2022/12/07/flu-cases-houston)
+
+**2023**
+
+Texas Health Resources expanded free flu vaccination services through its Faith Community Nursing and Health Promotion program, delivering no‑cost vaccines in underserved neighborhoods via houses of worship and pop‑up clinics.(https://www.texashealth.org/About-Texas-Health/Community-Update/Fighting-the-Flu)
+
+The CDC’s Vaccines for Children (VFC) grants awarded \$100,000 to the City of Houston and \$135,299 to the City of San Antonio, enhancing immunization infrastructure and outreach. (https://fundingprofiles.cdc.gov/Report_Docs/PDFDocs/Rpt2023/Texas-2023-CDC-Grants-Profile-Report.pdf)
+
+### Politics and Policy
+
+**2022**
+
+Statewide executive orders and Texas Supreme Court rulings prohibited local mask mandates, preventing individual cities from imposing mask requirements during peak influenza activity, thereby limiting non‑pharmaceutical interventions. (https://www.texastribune.org/2023/06/30/texas-supreme-court-greg-abbott-covid-masks/)
+
+**2023**
+
+House Bill 321, aimed at streamlining Medicaid and CHIP enrollment for children to improve access to vaccines and care, failed to pass despite bipartisan support, extending coverage gaps for low‑income families in cities such as Dallas and Houston.(https://capitol.texas.gov/tlodocs/89R/analysis/html/HB00321H.htm)
+
+### Demographics
+
+**2022**
+
+Pediatric hospitalizations surged early in the season in both Austin and Houston, overwhelming pediatric units. Approximately 11% of Texas children were uninsured, with underinsurance disproportionately affecting Hispanic communities. (https://publichealthwatch.org/2025/02/26/texas-health-uninsured-children-medicaid/)
+
+**2023**
+
+Uninsured rates rose to over 25% among Hispanic Texans and nearly 12% for children statewide, with the highest concentrations in Houston, Dallas, and San Antonio. (https://www.texastribune.org/2025/05/01/texas-hispanics-covid-19-deaths/)
+
+No influenza‑associated pediatric deaths were reported, and fewer school‑based outbreaks occurred in Dallas and Travis counties, reflecting improved vaccine uptake and targeted school outreach. (https://www.dallascounty.org/Assets/uploads/docs/hhs/influenza-surveillance/2023/Influenza%20Weekly%20Report%20Week%20ending%2012-30-2023.pdf)
 
 # Conclusion
+Our analysis indicates that flu vaccination coverage rate is the strongest predictor of flu patient incidence across Texas cities, particularly during the 2022 seasonal spike. A higher vaccination rate consistently correlates with fewer flu patients per 100,000 residents, and this relationship is supported by both visual trends and statistical analysis, including a bootstrapped regression coefficient suggesting that each 1% increase in coverage reduces flu incidence by approximately 2 cases per 100,000.
+
+Routine checkup percentage appears to have a moderate inverse relationship with flu incidence, but this signal becomes clearer only when excluding Austin, which is an outlier due to its unusually low checkup rate yet low flu incidence. After excluding Austin, we estimate that a 1% increase in routine checkup rates corresponds to roughly 6–7 fewer flu cases per 100,000.
+
+In contrast, the percentage of uninsured individuals shows little to no consistent correlation with flu incidence, especially after accounting for city-level outliers. This suggests that while access to insurance is an important public health concern, it may not be a primary driver of flu hospitalization rates at the city level.
+
+City comparisons highlight meaningful differences, with Austin consistently showing lower flu rates than cities like Dallas. These differences may be attributed not only to higher vaccination rates but also to demographic, political, and healthcare infrastructure differences. Policy shifts, such as improved outreach and vaccine funding in Houston and San Antonio, may also have contributed to changes in flu incidence over time.
+
+Overall, increasing flu vaccination coverage appears to be the most effective lever for reducing flu-related healthcare burdens across Texas cities, followed by improved access to routine preventive care.
