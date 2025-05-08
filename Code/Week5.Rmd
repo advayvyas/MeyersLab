@@ -1,0 +1,47 @@
+---
+title: "Week 5"
+author: "Advay Vyas"
+date: "5/6/25"
+output:
+  pdf_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(corrplot)
+library(mosaic)
+```
+
+# Introduction
+This week, we are going to conduct multiple linear regression and try to incorporate interaction variables and ANOVA for some additional modeling boosts. The (tentative) indicator variables are flu vaccination coverage rate and uninsured % (from Week 4), temperature (from Week 3), Social Vulnerability Index (SVI) and beds per capita (from Week 2). Since this is my last week until the break ends, I wanted to conduct a sort of final project that would try to tie everything together and hopefully show some real trends from the data that I've web scraped and cleaned.
+
+# The old model
+# A new correlation matrix
+# The new model
+## Adding flu vaccination coverage rate
+## Adding insurance coverage percentage
+## Adding temperature data
+## Adding SVI data
+## Adding beds per capita
+
+# ANOVA
+## Results
+## Analysis
+
+# Conclusion
+## Week 5
+## Looking forward
+What a ride! For how short this was, it was honestly great.
