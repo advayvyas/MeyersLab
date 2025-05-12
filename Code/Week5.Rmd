@@ -23,6 +23,8 @@ library(lubridate)
 library(patchwork)
 library(corrplot)
 library(mosaic)
+library(moderndive)
+library(effectsize)
 ```
 
 # Introduction
@@ -133,6 +135,11 @@ avg_beds_2022 <- weekly_city_data_norm %>%
 
 first_spike = first_spike %>% left_join(avg_beds_2022)
 ```
+```{r}
+colnames(first_spike)[5] = "children_poverty"
+colnames(first_spike)[6] = "routine_checkup"
+colnames(first_spike)[7] = "uninsured"
+```
 
 ```{r, fig.height = 7, fig.width = 8}
 numeric_data = first_spike[sapply(first_spike, is.numeric)]
@@ -142,12 +149,95 @@ corrplot.mixed(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, 
 
 # The new model
 ## Adding flu vaccination coverage rate
-## Adding insurance coverage percentage
+```{r}
+model_1 = lm(patients_per_100k ~ coverage_rate, data = first_spike)
+knitr::kable(get_regression_table(model_1))
+summary(model_1)$r.squared
+```
+
+```{r}
+model_1b = lm(patients_per_100k ~ coverage_rate, data = first_spike[c(2:5,7:8),])
+knitr::kable(get_regression_table(model_1))
+summary(model_1b)$r.squared
+```
+
+## Adding routine checkup coverage percentage
+```{r}
+model_2 = lm(patients_per_100k ~ coverage_rate + routine_checkup, data = first_spike)
+knitr::kable(get_regression_table(model_2))
+summary(model_2)$r.squared
+```
+
 ## Adding temperature data
+```{r}
+model_3 = lm(patients_per_100k ~ coverage_rate + routine_checkup + avg_temp, data = first_spike)
+knitr::kable(get_regression_table(model_3))
+summary(model_3)$r.squared
+```
+
 ## Adding SVI data
+```{r}
+model_4 = lm(patients_per_100k ~ coverage_rate + routine_checkup + avg_temp + svi_percentile, 
+             data = first_spike)
+knitr::kable(get_regression_table(model_4))
+summary(model_4)$r.squared
+```
+
 ## Adding beds per capita
+```{r}
+model_5 = lm(patients_per_100k ~ coverage_rate + routine_checkup + avg_temp + svi_percentile + avg_beds_per_100k, 
+             data = first_spike)
+knitr::kable(get_regression_table(model_5))
+summary(model_5)$r.squared
+```
 
 # ANOVA
+```{r}
+r2_progression = data.frame(
+  variable_added = c("coverage_rate", "routine_checkup", "avg_temp", "svi_percentile", "avg_beds_per_100k"),
+  r_squared = round(c(summary(model_1)$r.squared,
+                      summary(model_2)$r.squared,
+                      summary(model_3)$r.squared,
+                      summary(model_4)$r.squared,
+                      summary(model_5)$r.squared), 4),
+  adj_r_squared = round(c(summary(model_1)$adj.r.squared,
+                          summary(model_2)$adj.r.squared,
+                          summary(model_3)$adj.r.squared,
+                          summary(model_4)$adj.r.squared,
+                          summary(model_5)$adj.r.squared), 4)
+)
+
+knitr::kable(r2_progression, caption = "$R^2$ table", col.names = c("Variable", "$R^2$", " Adjusted $R^2$"))
+knitr::kable(eta_squared(model_5, partial=FALSE), caption = "$\\eta^2$ table",
+             col.names = c("Variable", "$\\eta^2$", "Confidence", "Lower", "Upper"))
+```
+
+```{r,fig.height = 5, fig.width = 8}
+metrics = data.frame(
+  variable_added = c("coverage_rate", "routine_checkup", "avg_temp", "svi_percentile", "avg_beds_per_100k"),
+  r_squared = c(0.3055, 0.3947, 0.4000, 0.4006, 0.8350),
+  adj_r_squared = c(0.1898, 0.1526, -0.0500, -0.3986, 0.4225),
+  eta_squared = c(0.305505599, 0.089218462, 0.005251184, 0.000645230, 0.434371398)
+)
+
+metrics$variable_added = factor(metrics$variable_added,
+  levels = c("coverage_rate", "routine_checkup", "avg_temp", "svi_percentile", "avg_beds_per_100k")
+)
+
+metric_long = pivot_longer(metrics, cols = c(r_squared, adj_r_squared, eta_squared), names_to = "metric", values_to = "value")
+
+ggplot(metric_long, aes(x = variable_added, y = value, color = metric, group = metric)) +
+  geom_hline(yintercept = 0) + 
+  geom_line() +
+  geom_point(size = 2.5) +
+  labs(title = "Model Fit Over Variable Additions",
+       x = "Variable Added",
+       y = "R squared / Adjusted R squared",
+       color = "Metric") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
 ## Results
 ## Analysis
 
