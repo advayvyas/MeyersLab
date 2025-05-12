@@ -23,25 +23,236 @@ library(lubridate)
 library(patchwork)
 library(corrplot)
 library(mosaic)
+library(moderndive)
+library(effectsize)
 ```
 
 # Introduction
 This week, we are going to conduct multiple linear regression and try to incorporate interaction variables and ANOVA for some additional modeling boosts. The (tentative) indicator variables are flu vaccination coverage rate and uninsured % (from Week 4), temperature (from Week 3), Social Vulnerability Index (SVI) and beds per capita (from Week 2). Since this is my last week until the break ends, I wanted to conduct a sort of final project that would try to tie everything together and hopefully show some real trends from the data that I've web scraped and cleaned.
 
-# The old model
 # A new correlation matrix
+```{r, warning=FALSE, message=FALSE}
+city_trend_major = read.csv("../texas_city_trend_major.csv") 
+colnames(city_trend_major) = c("city", "year", "quarter", "total_patients", "population", "patients_per_100k")
+
+first_spike = city_trend_major %>% filter(quarter == "2022Q4") %>% select(city, total_patients, population, patients_per_100k)
+
+city_health = read.csv("../texas_cityhealth.csv") %>% pivot_wider(names_from = Metric, values_from = Value) # 2022
+colnames(city_health)[1] = "city"
+
+flu_vax = read.csv("../texas_flu_vax.csv") # 2022
+
+first_spike = first_spike %>% left_join(city_health) %>% left_join(flu_vax[,2:3])
+```
+
+```{r, message=FALSE}
+corresponding_cities = c(
+  "San Antonio",       # Bexar County
+  "Dallas",            # Dallas County
+  "El Paso",           # El Paso County
+  "Houston",           # Harris County
+  "Corpus Christi",    # Nueces County
+  "Fort Worth", # Tarrant County
+  "Austin",          # Travis County
+  "Arlington" # Tarrant County again
+)
+
+weather = read.csv("../texas_weather.csv") %>% filter(year == 2022) %>% arrange(county)
+weather = weather %>% rbind(weather[6,])
+weather$city = corresponding_cities
+
+first_spike = first_spike %>% left_join(weather[,c(2,4)])
+```
+
+```{r, message = FALSE}
+texas_svi = read.csv("../texas_svi.csv")
+counties = c("Harris County", "Bexar County", "Dallas County", "Travis County", "Tarrant County", "El Paso County", "Tarrant County", "Nueces County")
+
+texas_svi_major = texas_svi %>% filter(COUNTY %in% counties) %>% select(COUNTY, RPL_THEMES) %>% add_column(City = c(1:7), .before = 2) %>% arrange((RPL_THEMES))
+
+texas_svi_major = texas_svi_major %>% arrange(COUNTY)
+texas_svi_major = texas_svi_major %>% rbind(texas_svi_major[6,])
+texas_svi_major$city = corresponding_cities
+texas_svi_major = texas_svi_major[,3:4]
+colnames(texas_svi_major)[1] = "svi_percentile"
+
+first_spike = first_spike %>% left_join(texas_svi_major)
+```
+
+```{r, cache=TRUE}
+hospitals = read.csv("../COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_Facility.csv")
+hospitals = hospitals[hospitals$state=="TX",] %>% mutate(city = str_to_title(city))
+```
+
+```{r, fig.height=4, fig.width=10}
+major_cities = c("Houston", "San Antonio", "Dallas", "Austin", "Fort Worth", "El Paso", "Arlington", "Corpus Christi")
+
+hospitals_major = hospitals %>% filter(city %in% major_cities) %>% mutate(city = factor(city, levels = major_cities))
+desired_columns = c("hospital_pk", "collection_week", "hospital_name", "city", "hospital_subtype", "total_beds_7_day_avg", "total_patients_hospitalized_confirmed_influenza_7_day_sum", "total_patients_hospitalized_confirmed_influenza_7_day_avg")
+
+hospitals_major = hospitals_major %>%
+  select(all_of(desired_columns)) %>%  
+  rename(
+    id = hospital_pk,
+    week = collection_week,
+    name = hospital_name,
+    city = city,
+    subtype = hospital_subtype,
+    beds_avg = total_beds_7_day_avg,
+    flu_sum = total_patients_hospitalized_confirmed_influenza_7_day_sum,
+    flu_avg = total_patients_hospitalized_confirmed_influenza_7_day_avg) 
+
+hospitals_major = hospitals_major %>% mutate(across(c(beds_avg, flu_sum, flu_avg), ~ifelse(. <= 0, NA, .)))
+```
+
+```{r}
+weekly_city_data = hospitals_major %>% drop_na(beds_avg) %>% mutate(week = as.Date(week)) %>% group_by(city, week) %>% summarize(total_beds = sum(beds_avg), .groups = "drop")
+
+# gotta clean up this data
+city_pop = read.csv("../texas_city_pop.csv")
+city_pop = city_pop[c(3:1233), c(1, 3:6)]
+
+names(city_pop) = as.character(city_pop[1, ])
+names(city_pop)[1] = "City"
+city_pop = city_pop[-1, ]
+
+city_pop = city_pop[c(52, 270, 44, 237, 340, 972, 497, 376),]
+city_pop$City = c("Austin", "Dallas", "Arlington", "Corpus Christi", "El Paso", "San Antonio", "Houston", "Fort Worth")
+city_pop = city_pop %>%  mutate(across(2:5, ~ as.numeric(gsub("[^0-9.-]", "", .)))) %>% arrange(desc(1))
+```
+
+```{r, fig.height = 8, fig.width = 10, message = "false", warning = "false"}
+city_pop_long = city_pop %>% pivot_longer(-City, names_to = "year", values_to = "population") %>% mutate(year = as.integer(year))
+
+weekly_city_data_norm = weekly_city_data %>% mutate(year = as.integer(format(week, "%Y"))) %>% left_join(city_pop_long, by = c("city" = "City", "year" = "year")) %>% 
+  mutate(beds_per_100k = total_beds / population * 100000) %>% mutate(city = factor(city, levels = major_cities))
+
+avg_beds_2022 <- weekly_city_data_norm %>%
+  filter(year == 2022) %>%
+  group_by(city) %>%
+  summarize(avg_beds_per_100k = mean(beds_per_100k, na.rm = TRUE))
+
+first_spike = first_spike %>% left_join(avg_beds_2022)
+```
+```{r}
+colnames(first_spike)[5] = "children_poverty"
+colnames(first_spike)[6] = "routine_checkup"
+colnames(first_spike)[7] = "uninsured"
+```
+
+I've summed up the previous weeks (beds from weeks 1-2, svi from week 2, city health from week 3-4, flu vaccination from week 3-4, and temperature from week 3) into one large correlation matrix. We are primarily interested in correlations with the patients variable and we see that coverage_rate, routine_checkup, uninsured, SVI percentile, and avg_beds seem to have a significant correlation. We know from last week that the insurance correlation isn't really substantive, so let's move on and ignore that when we build our linear regression.
+
+```{r, fig.height = 7, fig.width = 8}
+numeric_data = first_spike[sapply(first_spike, is.numeric)]
+cor_matrix = cor(numeric_data)
+corrplot.mixed(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, upper="color", lower="number", diag="l")
+```
+
+\newpage
+
 # The new model
+A quick aside: due to having a very small dataset (only 8 variables), the 95% confidence intervals for a lot of statistics will include 0 (be statistically insignificant). It's important to note the trends here instead of statistical significance since that is hard to nail down with a small sample like ours.
+
 ## Adding flu vaccination coverage rate
-## Adding insurance coverage percentage
+```{r}
+model_1 = lm(patients_per_100k ~ coverage_rate, data = first_spike)
+knitr::kable(get_regression_table(model_1), caption = "Model 1")
+```
+Our first model is simply between patients and flu vaccination coverage rate, and our estimate here is -2.196, so with every percent increase in coverage_rate, the amount of flu patients per 100,000 decreases by about 2. Looks good! We also get an $R^2$ value of `r round(summary(model_1)$r.squared, 4)`, which is good for our first variable.
+
+## Adding routine checkup coverage percentage
+```{r}
+model_2 = lm(patients_per_100k ~ coverage_rate + routine_checkup, data = first_spike)
+knitr::kable(get_regression_table(model_2), caption = "Model 2")
+```
+Next, we had the routine_checkup variable which cuts the coverage_rate variable estimate slightly and the intercept quite a lot. Still statistically insignificant, and this time with a "more centered about 0" 95% CI. However, our $R^2$ value stayed quite similar, jumping up by about 0.1 to `r round(summary(model_2)$r.squared, 4)`.
+
 ## Adding temperature data
+```{r}
+model_3 = lm(patients_per_100k ~ coverage_rate + routine_checkup + avg_temp, data = first_spike)
+knitr::kable(get_regression_table(model_3), caption = "Model 3")
+```
+The temperature data brings the intercept closer to 0, leaves coverage_rate and routine_checkup virtually unchanged and contributes a tiny effect per degree in Fahrenheit. The $R^2$ value reflects this, with a virtually identical `r round(summary(model_3)$r.squared, 4)`.
+
 ## Adding SVI data
-## Adding beds per capita
+```{r}
+model_4 = lm(patients_per_100k ~ coverage_rate + routine_checkup + avg_temp + svi_percentile, 
+             data = first_spike)
+knitr::kable(get_regression_table(model_4), caption = "Model 4")
+```
+Next, the social vulnerability index percentile is added to the linear regression. While the estimate changes slightly to accommodate for this new variable, we can see that since SVI itself is on a scale from 0 to 1, it really has no substantial effect. Our $R^2$ value is henceforth `r round(summary(model_4)$r.squared, 4)`.
+
+## Adding beds per 100,000
+```{r}
+model_5 = lm(patients_per_100k ~ coverage_rate + routine_checkup + avg_temp + svi_percentile + avg_beds_per_100k, 
+             data = first_spike)
+knitr::kable(get_regression_table(model_5), caption = "Model 5")
+```
+While adding beds per 100,000, now we are getting somewhere! This variable shakes up a lot of the previous variables and looks to be incredibly predictive of the flu patients per 100,000 (about every 5 beds to a new patient, roughly). The $R^2$ value takes a leap towards `r round(summary(model_5)$r.squared, 4)`!
+
+\newpage
 
 # ANOVA
-## Results
-## Analysis
+## $R^2$ and adjusted $R^2$
+```{r}
+r2_progression = data.frame(
+  variable_added = c("coverage_rate", "routine_checkup", "avg_temp", "svi_percentile", "avg_beds_per_100k"),
+  r_squared = round(c(summary(model_1)$r.squared,
+                      summary(model_2)$r.squared,
+                      summary(model_3)$r.squared,
+                      summary(model_4)$r.squared,
+                      summary(model_5)$r.squared), 4),
+  adj_r_squared = round(c(summary(model_1)$adj.r.squared,
+                          summary(model_2)$adj.r.squared,
+                          summary(model_3)$adj.r.squared,
+                          summary(model_4)$adj.r.squared,
+                          summary(model_5)$adj.r.squared), 4)
+)
+
+knitr::kable(r2_progression, caption = "$R^2$ table", col.names = c("Variable", "$R^2$", " Adjusted $R^2$"))
+```
+The above table shows how $R^2$ value develops over each variable being added the difference between $R^2$ and adjusted $R^2$, which takes into consideration value relative to the sample size. Therefore, we can see a clear penalty assessed to the addition of temperature and SVI - they aren't useful. Meanwhile, we see a boost from coverage_rate and beds followed by routine_checkup as well. It's important to note here that while our original $R^2$ values showed that coverage_rate had an "impact" of about 0.3, the adjusted values say it is slightly less; vice versa for routine_checkups, albeit small.
+
+## $\eta^2$
+```{r}
+knitr::kable(eta_squared(model_5, partial=FALSE), caption = "$\\eta^2$ table",
+             col.names = c("Variable", "$\\eta^2$", "Confidence", "Lower", "Upper"), digits = 4)
+```
+In this table above, we summarize the effect size changes ($\eta^2$) and this is basically the $R^2$ except it isn't cumulative. The same variables look prominent here as well. We are also assuming (I think) that the confidence interval including 0 is due to a lack in sample size to predict on.
+
+## $\omega^2$
+```{r}
+knitr::kable(omega_squared(model_5, partial=FALSE), caption = "$\\omega^2$ table",
+             col.names = c("Variable", "$\\omega^2$", "Confidence", "Lower", "Upper"), digits = 4)
+```
+In this table, we find the $\omega^2$ values which is a different kind of effect size metric that adjusts for bias and is more conservative. We see that clearly reflected in the values, where avg_beds_per_100k leads the pack followed by coverage_rate and a nonexistent routine_checkup contribution.
+
+## Graph of effect size metrics by variable added
+```{r,fig.height = 6, fig.width = 9}
+metrics = data.frame(
+  variable_added = c("coverage_rate", "routine_checkup", "avg_temp", "svi_percentile", "avg_beds_per_100k"),
+  r_squared = c(0.3055, 0.3947, 0.4000, 0.4006, 0.8350),
+  adj_r_squared = c(0.1898, 0.1526, -0.0500, -0.3986, 0.4225),
+  eta_squared = c(0.305505599, 0.089218462, 0.005251184, 0.000645230, 0.434371398),
+  omega_squared = c(0.206005265, 0.006202655, 0.000000000, 0.000000000, 0.325049436)
+)
+
+metrics$variable_added = factor(metrics$variable_added, 
+                                levels = c("coverage_rate", "routine_checkup", "avg_temp", "svi_percentile", "avg_beds_per_100k"))
+
+metric_long = pivot_longer(metrics, cols = c(r_squared, adj_r_squared, eta_squared, omega_squared), 
+                           names_to = "metric", values_to = "value")
+
+metric_long$metric = factor(metric_long$metric, levels = c("r_squared", "adj_r_squared", "eta_squared", "omega_squared"))
+
+ggplot(metric_long, aes(x = variable_added, y = value, color = metric, group = metric)) + geom_hline(yintercept = 0) + geom_line() +
+  geom_point(size = 2.5) + labs(title = "ANOVA", x = "Variable Added", y = "Value", color = "Metric") + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + facet_wrap(~metric)
+```
 
 # Conclusion
 ## Week 5
+The important variables I think we have are avg_beds_per_100k, coverage_rate, and routine_checkup (in that order). I think the dashboard already has the coverage rate included so maybe including the hospital beds in that city and their routine checkup % could help fine tune each city's individual predictions. It's important to keep in mind this statistical analysis was inherently narrow - I only looked at 8 different Texan cities at one specific quarter of 2022 (the flu season "spike") and collected data based off of that. Still, I think my findings could be useful in some context and I hope they are!
+
 ## Looking forward
-What a ride! For how short this was, it was honestly great.
+What a ride! For how short this was, it was honestly great. Thank you so much to the Meyers Lab and my mentor Dr. Dongah Kim! I'm excited to start working with more advanced tools in the fall and contributing to that flu patient dashboard.
