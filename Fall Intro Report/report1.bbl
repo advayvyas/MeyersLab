@@ -1,0 +1,116 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{nty/global//global/global/global}
+    \entry{bracher21}{article}{}{}
+      \name{author}{4}{}{%
+        {{hash=bf4e0b1559f41753a5f8f0e193bf5f98}{%
+           family={Bracher},
+           familyi={B\bibinitperiod},
+           given={Johannes},
+           giveni={J\bibinitperiod}}}%
+        {{hash=d16a29b1c1bff8d354890977bae93ae5}{%
+           family={Ray},
+           familyi={R\bibinitperiod},
+           given={Evan\bibnamedelima L.},
+           giveni={E\bibinitperiod\bibinitdelim L\bibinitperiod}}}%
+        {{hash=cf94799d213c0ab2fd2012473da7440b}{%
+           family={Gneiting},
+           familyi={G\bibinitperiod},
+           given={Tilmann},
+           giveni={T\bibinitperiod}}}%
+        {{hash=68b4dbf033ecb04ab5bf0af268e2da21}{%
+           family={Reich},
+           familyi={R\bibinitperiod},
+           given={Nicholas\bibnamedelima G.},
+           giveni={N\bibinitperiod\bibinitdelim G\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Public Library of Science}%
+      }
+      \strng{namehash}{057518eeab9da06b877bc329dd050981}
+      \strng{fullhash}{65a2317506fc68bba293dee27218077f}
+      \strng{fullhashraw}{65a2317506fc68bba293dee27218077f}
+      \strng{bibnamehash}{057518eeab9da06b877bc329dd050981}
+      \strng{authorbibnamehash}{057518eeab9da06b877bc329dd050981}
+      \strng{authornamehash}{057518eeab9da06b877bc329dd050981}
+      \strng{authorfullhash}{65a2317506fc68bba293dee27218077f}
+      \strng{authorfullhashraw}{65a2317506fc68bba293dee27218077f}
+      \field{sortinit}{B}
+      \field{sortinithash}{d7095fff47cda75ca2589920aae98399}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{PLOS Computational Biology}
+      \field{month}{02}
+      \field{number}{2}
+      \field{title}{Evaluating epidemic forecasts in an interval format}
+      \field{volume}{17}
+      \field{year}{2021}
+      \field{pages}{1\bibrangedash 15}
+      \range{pages}{15}
+      \verb{doi}
+      \verb 10.1371/journal.pcbi.1008618
+      \endverb
+    \endentry
+    \entry{hewamalage23}{article}{}{}
+      \name{author}{3}{}{%
+        {{hash=bcedb4c1d2a852d41022a05e63751bf9}{%
+           family={Hewamalage},
+           familyi={H\bibinitperiod},
+           given={Hansika},
+           giveni={H\bibinitperiod}}}%
+        {{hash=dcb48c39391d3c56f62b0a477b388105}{%
+           family={Ackermann},
+           familyi={A\bibinitperiod},
+           given={Klaus},
+           giveni={K\bibinitperiod}}}%
+        {{hash=fb7be81f0574878d688bb03f0abb8502}{%
+           family={Bergmeir},
+           familyi={B\bibinitperiod},
+           given={Christoph},
+           giveni={C\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Springer}%
+      }
+      \strng{namehash}{e630202caf641bf7542eb6512e76a276}
+      \strng{fullhash}{e630202caf641bf7542eb6512e76a276}
+      \strng{fullhashraw}{e630202caf641bf7542eb6512e76a276}
+      \strng{bibnamehash}{e630202caf641bf7542eb6512e76a276}
+      \strng{authorbibnamehash}{e630202caf641bf7542eb6512e76a276}
+      \strng{authornamehash}{e630202caf641bf7542eb6512e76a276}
+      \strng{authorfullhash}{e630202caf641bf7542eb6512e76a276}
+      \strng{authorfullhashraw}{e630202caf641bf7542eb6512e76a276}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Data Mining and Knowledge Discovery}
+      \field{number}{2}
+      \field{title}{Forecast evaluation for data scientists: common pitfalls and best practices}
+      \field{volume}{37}
+      \field{year}{2023}
+      \field{pages}{788\bibrangedash 832}
+      \range{pages}{45}
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+

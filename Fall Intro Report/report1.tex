@@ -1,0 +1,35 @@
+\documentclass[12pt]{article}
+\usepackage{../advay} 
+\usepackage{xcolor} % Ensure xcolor is included
+\definecolor{ForestGreen}{rgb}{0.13, 0.55, 0.13} % Define ForestGreen color
+\usepackage{graphicx}
+\usepackage{biblatex} %Imports biblatex package
+\addbibresource{refs.bib}
+
+\title{Meyers Lab Report \#1}
+\author{Advay Vyas}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\section{Forecast evaluation}
+I plan to read~\cite{hewamalage23},~\cite{bracher21}, and then summarize the results and its relevance to our current research focus.
+\subsection{General ideas and practices}
+ML metrics are very different than forecasting metrics because time series data is much messier and the regular ways of determining model success fail to measure accurately. Forecast origin is self-explanatory and forecast horizon is the section of time that we are predicting upon. Fixed origin evaluation uses the same training data each iteration and the forecasts are computed ``one-step ahead.'' On the other hand, rolling origin evaluation incorporates the new data into the testing set first, and then into the training set on the next iteration. In my opinion, rolling origin seems a lot better and I think that is what we use -- not sure yet though. 
+\subsection{Evaluating epidemic forecasts in intervals}
+\subsection{Weighted interval score metric}
+
+\section{Code investigation}
+\subsection{Flusion}
+\subsection{Local-Level-Forecasting}
+GBM\_US\_NSSP\_public\_state\_pct.ipynb
+
+\section{Miscellaneous}
+\subsection{Taylor polynomials for forecasting}
+
+
+\printbibliography
+
+\end{document}

@@ -1,0 +1,70 @@
+\ProvidesPackage{advay}
+
+% --- Core math packages ---
+\RequirePackage{amsmath,amssymb,amsthm,mathtools}
+\RequirePackage{thmtools}
+\RequirePackage{xparse}
+\RequirePackage[shortlabels]{enumitem}
+\RequirePackage{ifthen}
+\RequirePackage[colorlinks=true,pdfusetitle]{hyperref}
+\hypersetup{urlcolor=RubineRed,linkcolor=RoyalBlue,citecolor=ForestGreen}
+
+% --- Options ---
+\newif\ifrishabhframe\rishabhframefalse
+\newif\ifrishabhsec\rishabhsecfalse
+\DeclareOption{sec}{\rishabhsectrue}
+\DeclareOption{frame}{\rishabhframetrue}
+\ProcessOptions\relax
+
+% --- Shortcuts: Numbers, symbols, operators ---
+\newcommand{\RR}{\mathbb R}
+\newcommand{\CC}{\mathbb C}
+\newcommand{\QQ}{\mathbb Q}
+\newcommand{\ZZ}{\mathbb Z}
+\newcommand{\NN}{\mathbb N}
+\newcommand{\EE}{\mathbb E}
+\newcommand{\PP}{\mathbb P}
+
+\newcommand{\ol}{\overline}
+\newcommand{\ul}{\underline}
+\newcommand{\wt}{\widetilde}
+\newcommand{\wh}{\widehat}
+
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\im}{im}
+\DeclareMathOperator{\id}{id}
+\DeclareMathOperator{\cl}{cl}
+\DeclareMathOperator{\interior}{int}
+\DeclareMathOperator{\bd}{bd}
+
+\newcommand{\floor}[1]{\left\lfloor #1 \right\rfloor}
+\newcommand{\ceil}[1]{\left\lceil #1 \right\rceil}
+\newcommand{\gen}[1]{\langle #1 \rangle}
+\newcommand{\Mod}[1]{\ (\mathrm{mod}\ #1)}
+
+% --- Theorem environments ---
+\ifrishabhframe
+  \RequirePackage[usenames,dvipsnames]{xcolor}
+  \RequirePackage[framemethod=TikZ]{mdframed}
+  \declaretheoremstyle[
+    headfont=\sffamily\bfseries\color{MidnightBlue},
+    bodyfont=\normalfont,
+    mdframed={backgroundcolor=blue!5,linecolor=blue,roundcorner=5pt},
+  ]{thmstyle}
+\else
+  \declaretheoremstyle[bodyfont=\itshape]{thmstyle}
+\fi
+
+\ifrishabhsec
+  \declaretheorem[style=thmstyle,numberwithin=section]{theorem}
+\else
+  \declaretheorem[style=thmstyle]{theorem}
+\fi
+\declaretheorem[sibling=theorem]{lemma}
+\declaretheorem[sibling=theorem]{proposition}
+\declaretheorem[sibling=theorem]{corollary}
+\declaretheorem[sibling=theorem]{definition}
+\declaretheorem[sibling=theorem]{example}
+\declaretheorem[sibling=theorem]{remark}
