@@ -1,9 +1,11 @@
 \documentclass[12pt]{article}
 \usepackage{../advay} 
-\usepackage{xcolor} % Ensure xcolor is included
-\definecolor{ForestGreen}{rgb}{0.13, 0.55, 0.13} % Define ForestGreen color
+\usepackage{xcolor} 
+\definecolor{ForestGreen}{rgb}{0.13, 0.55, 0.13} 
+\definecolor{RubineRed}{rgb}{0.8, 0.0, 0.3} 
+\definecolor{RoyalBlue}{rgb}{0.25, 0.41, 0.88}
 \usepackage{graphicx}
-\usepackage{biblatex} %Imports biblatex package
+\usepackage{biblatex}
 \addbibresource{refs.bib}
 
 \title{Meyers Lab Report \#1}
@@ -14,20 +16,34 @@
 \maketitle
 
 \tableofcontents
-\section{Forecast evaluation}
-I plan to read~\cite{hewamalage23},~\cite{bracher21}, and then summarize the results and its relevance to our current research focus.
-\subsection{General ideas and practices}
-ML metrics are very different than forecasting metrics because time series data is much messier and the regular ways of determining model success fail to measure accurately. Forecast origin is self-explanatory and forecast horizon is the section of time that we are predicting upon. Fixed origin evaluation uses the same training data each iteration and the forecasts are computed ``one-step ahead.'' On the other hand, rolling origin evaluation incorporates the new data into the testing set first, and then into the training set on the next iteration. In my opinion, rolling origin seems a lot better and I think that is what we use -- not sure yet though. 
+\section{Forecast evaluation background}
+I plan to read~\cite{hewamalage23} in its entirety and take notes to learn how forecast evaluation works.
+\subsection{Introduction}
+ML metrics are very different than forecasting metrics because time series data is much messier and the regular ways of determining model success fail to measure accurately. Forecast origin is self-explanatory and forecast horizon is the section of time that we are predicting upon. Fixed origin evaluation uses the same training data each iteration and the forecasts are computed ``one-step ahead''. On the other hand, rolling origin evaluation incorporates the new data into the testing set first, and then into the training set on the next iteration. In my opinion, rolling origin seems a lot better and I think that is what we use -- not sure yet though. 
+
+Time series data also often has a series of issues that make predicting and measuring predictions much harder. Time series can have non-stationarities like seasonality, trends, or breaks; non-normality like fat tails and outliers; and series with a very short history which are inherently hard to use as training data. 
+
+\subsection{Benchmarks}
+Next, the paper moves on to the topic of benchmarks. The naive forecast (a.k.a no-change model) uses the last known observation as the forecast and actually has good performance in some scenarios (likely those with little to no change period to period, not for us with the prevalance of vaccine skepticism). While not a viable model for real prediction, it should definitely be used a strong benchmark to check the performance of other models. Rather than an abstract metric, performing better than the most simple prediction should be the bare minimum for an accurate model. For example, finance models sometimes involve heavy computations like neural networks only to fail against the naive forecast (random walk w/out drift). Essentially, ML research fails to account to be better than simple random modeling -- benchmarks are useful!
+
+
+\section{Weighted interval score metric}
+I plan to read~\cite{bracher21}, and then summarize the results and its relevance to our current research focus in this section.
 \subsection{Evaluating epidemic forecasts in intervals}
-\subsection{Weighted interval score metric}
 
 \section{Code investigation}
+I plan to read through the Flusion and Local-Level-Forecasting codebases and write about what I noticed and questions I have.
 \subsection{Flusion}
+TO DO
 \subsection{Local-Level-Forecasting}
+TO DO
+
 GBM\_US\_NSSP\_public\_state\_pct.ipynb
 
 \section{Miscellaneous}
+I'll just store ideas I thought were interesting in this section and investigate them.
 \subsection{Taylor polynomials for forecasting}
+TO DO
 
 
 \printbibliography

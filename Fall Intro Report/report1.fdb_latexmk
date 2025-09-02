@@ -1,12 +1,12 @@
 # Fdb version 4
-["biber report1"] 0 "report1.bcf" "report1.bbl" "report1" 0 -1
+["biber report1"] 1756771547.97611 "report1.bcf" "report1.bbl" "report1" 1756771611.05337 0
   "refs.bib" 1756763652 754 bce28f829f2010300e3288185bfb023c ""
-  "report1.bcf" 1756765400 108676 d457321f574edd521c9410a62769eead "pdflatex"
+  "report1.bcf" 1756771610 108676 d457321f574edd521c9410a62769eead "pdflatex"
   (generated)
   "report1.bbl"
   "report1.blg"
   (rewritten before read)
-["pdflatex"] 1756765398.88294 "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" "report1.pdf" "report1" 1756765400.72529 2
+["pdflatex"] 1756771609.50628 "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" "report1.pdf" "report1" 1756771611.05446 0
   "../advay.sty" 1756720709 2213 f70e379103d0dd03a3d205aa210b71c1 ""
   "C:/Users/advay/AppData/Local/MiKTeX/2.9/fonts/map/pdftex/pdftex.map" 1756763721 25678 aa7c8fd3909e804e7d85441c21595406 ""
   "C:/Users/advay/AppData/Local/MiKTeX/2.9/miktex/data/le/pdftex/pdflatex.fmt" 1756323843 10057006 712f602210b385183caa0eae5eb5df65 ""
@@ -115,12 +115,13 @@
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/tools/calc.sty" 1749468414 10374 2ffd4f27c7f90b8a300608069537743c ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/url/url.sty" 1388490452 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/xcolor/xcolor.sty" 1729265222 55384 b454dec21c2d9f45ec0b793f0995b992 ""
-  "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" 1756765385 1621 50a46494af66e085a35dc005b35b1609 ""
-  "report1.aux" 1756765400 1698 0e69e7fdf50aa1bfb0149eeec252253b "pdflatex"
-  "report1.bbl" 1756763821 4341 22cac2d7679f696b691eaa0ce128fa10 "biber report1"
-  "report1.out" 1756765400 1581 67b9d6d8d58d764410ad481e15eafdf5 "pdflatex"
-  "report1.tex" 1756765385 1621 50a46494af66e085a35dc005b35b1609 ""
-  "report1.toc" 1756765400 777 648fd79635b83afb96e13ce635a3a363 "pdflatex"
+  "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" 1756771608 3162 fee3a90bb0b1bc6eea180c508088323a ""
+  "report1.aux" 1756771610 1804 3f028f7d980a1171bf1132530e8bf6f3 "pdflatex"
+  "report1.bbl" 1756771550 4341 22cac2d7679f696b691eaa0ce128fa10 "biber report1"
+  "report1.out" 1756771610 1649 73d47fb704b95b4efad80fe94ae054f9 "pdflatex"
+  "report1.run.xml" 1756771610 2320 d9ddb90fd8f54677cbb9c160e93d9c06 "pdflatex"
+  "report1.tex" 1756771608 3162 fee3a90bb0b1bc6eea180c508088323a ""
+  "report1.toc" 1756771610 839 fa428cabdd8d7ef89624db509aba2b5a "pdflatex"
   (generated)
   "report1.aux"
   "report1.bcf"
