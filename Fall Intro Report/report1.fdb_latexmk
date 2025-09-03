@@ -1,15 +1,17 @@
 # Fdb version 4
-["biber report1"] 1756771547.97611 "report1.bcf" "report1.bbl" "report1" 1756771611.05337 0
+["biber report1"] 1756856884.53135 "report1.bcf" "report1.bbl" "report1" 1756857625.23913 0
   "refs.bib" 1756763652 754 bce28f829f2010300e3288185bfb023c ""
-  "report1.bcf" 1756771610 108676 d457321f574edd521c9410a62769eead "pdflatex"
+  "report1.bcf" 1756857623 108676 d457321f574edd521c9410a62769eead "pdflatex"
   (generated)
   "report1.bbl"
   "report1.blg"
   (rewritten before read)
-["pdflatex"] 1756771609.50628 "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" "report1.pdf" "report1" 1756771611.05446 0
+["pdflatex"] 1756857619.37921 "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" "report1.pdf" "report1" 1756857625.24275 0
   "../advay.sty" 1756720709 2213 f70e379103d0dd03a3d205aa210b71c1 ""
   "C:/Users/advay/AppData/Local/MiKTeX/2.9/fonts/map/pdftex/pdftex.map" 1756763721 25678 aa7c8fd3909e804e7d85441c21595406 ""
+  "C:/Users/advay/AppData/Local/MiKTeX/2.9/fonts/pk/ljfour/jknappen/ec/dpi600/tcrm1200.pk" 1756402437 14064 e1d686bb1840eb5aabe78751eefc62b3 ""
   "C:/Users/advay/AppData/Local/MiKTeX/2.9/miktex/data/le/pdftex/pdflatex.fmt" 1756323843 10057006 712f602210b385183caa0eae5eb5df65 ""
+  "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/jknappen/ec/tcrm1200.tfm" 993062508 1444 95ffe0f19b974d50849790c8225c7ef7 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1233951848 1004 54797486969f23fa377b128694d548df ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1233951848 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/public/amsfonts/symbols/msam10.tfm" 1233951854 916 f87d7c45f9c908e672703b83b72241a3 ""
@@ -33,8 +35,10 @@
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/public/cm/cmtt12.tfm" 1136765053 772 9a936b7f5e2ff0557fce0f62822f0bbf ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmbx12.pfb" 1247596666 32080 340ef9bf63678554ee606688e7b5339d ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmcsc10.pfb" 1247596667 32001 6aeea3afe875097b1eb0da29acd61e28 ""
+  "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmmi12.pfb" 1247596667 36741 0ee9e374ec3e30da87cdfb0ea3575226 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr12.pfb" 1247596667 32722 d7379af29a190c3f453aba36302ff5a9 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr17.pfb" 1247596666 32362 bc3f3eec7ab7d65fe700963d4017d32c ""
+  "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr8.pfb" 1247596667 32726 39f0f9e62e84beb801509898a605dbd5 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmti12.pfb" 1247596667 36118 fad905eba93cff5bce1e185fe980a177 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmtt12.pfb" 1247596666 24252 1e4e051947e12dfb50fee0b7f4e26e3a ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/context/base/mkii/supp-pdf.mkii" 1580390158 71627 94eb9990bed73c364d7f53f960cc8c5b ""
@@ -115,13 +119,13 @@
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/tools/calc.sty" 1749468414 10374 2ffd4f27c7f90b8a300608069537743c ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/url/url.sty" 1388490452 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/xcolor/xcolor.sty" 1729265222 55384 b454dec21c2d9f45ec0b793f0995b992 ""
-  "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" 1756771608 3162 fee3a90bb0b1bc6eea180c508088323a ""
-  "report1.aux" 1756771610 1804 3f028f7d980a1171bf1132530e8bf6f3 "pdflatex"
-  "report1.bbl" 1756771550 4341 22cac2d7679f696b691eaa0ce128fa10 "biber report1"
-  "report1.out" 1756771610 1649 73d47fb704b95b4efad80fe94ae054f9 "pdflatex"
-  "report1.run.xml" 1756771610 2320 d9ddb90fd8f54677cbb9c160e93d9c06 "pdflatex"
-  "report1.tex" 1756771608 3162 fee3a90bb0b1bc6eea180c508088323a ""
-  "report1.toc" 1756771610 839 fa428cabdd8d7ef89624db509aba2b5a "pdflatex"
+  "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Fall Intro Report/report1.tex" 1756857617 6130 2ebb27bf23fe68fd982af43f02e5ef67 ""
+  "report1.aux" 1756857623 2231 2413f73b7af37ad1e11c1856619a407b "pdflatex"
+  "report1.bbl" 1756856887 4341 22cac2d7679f696b691eaa0ce128fa10 "biber report1"
+  "report1.out" 1756857623 2386 ac0ed8d1eb0f121d54b80f9fabe9cf36 "pdflatex"
+  "report1.run.xml" 1756857623 2320 d9ddb90fd8f54677cbb9c160e93d9c06 "pdflatex"
+  "report1.tex" 1756857617 6130 2ebb27bf23fe68fd982af43f02e5ef67 ""
+  "report1.toc" 1756857623 1143 2f89d34b5627c06a44eea8bb242a0e89 "pdflatex"
   (generated)
   "report1.aux"
   "report1.bcf"
