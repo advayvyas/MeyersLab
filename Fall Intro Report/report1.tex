@@ -17,7 +17,7 @@
 
 \tableofcontents
 \section{Forecast evaluation background}
-I plan to read~\cite{hewamalage23} in its entirety and take notes to learn how forecast evaluation works.
+I read~\cite{hewamalage23} and took notes to learn how forecast evaluation works.
 \subsection{Introduction}
 ML metrics are very different than forecasting metrics because time series data is much messier and the regular ways of determining model success fail to measure accurately. Forecast origin is self-explanatory and forecast horizon is the section of time that we are predicting upon. Fixed origin evaluation uses the same training data each iteration and the forecasts are computed ``one-step ahead''. On the other hand, rolling origin evaluation incorporates the new data into the testing set first, and then into the training set on the next iteration. In my opinion, rolling origin seems a lot better and I think that is what we use -- not sure yet though. 
 
@@ -58,30 +58,54 @@ In conclusion, data partitioning boils down to the length of the series (kind of
 Error measures are a key focus of this week's work so this section should be particularly important. Scale-dependent forecast bias can be assessed with Mean Error, while two other scale-dependent measures usually used in regression are MSE and MAE. However, we should use scale-independent (next to impossible) but we will examine a wide variety of measures. A couple examples are MSE and RMSE that optimize for the mean, MAE and MASE that optimize for the median, and some researchers apply a mix of these error models. Actually, the mix/blend of these models is the most optimal method as of now and is highly recommended. I think we will be doing weighted interval score but I'm curious to see how it is similar/different to mixed error methods in time-series data. On pages 814--815, various common error measures are listed. On pages 816--820, a comphrensive list of error measures is listed by category for reference. 
 
 \subsubsection{Statistical significance tests}
-The Diebold-Mariano test and Wilcoxon rank-sum test are two major tets for comparing between two competing forecasts. Another two-forecast test is the Giacomini-White test that can also assess the conditional predictive ability. A table of statistical signifiance tests and associated information follows from pages 822--825. Moreover, the Friedman test looks at detecting signifiance between multiple comepting methods, looking at the ranks of the methods sorted by mean errors. When performing significance testing, it is important to look at the amount of data included. For example, a very high number of series has a low CD $\rightarrow$ significant results for even small differences in models. This isn't a flaw -- results become more reliable and are statistically highly significant. On the other hand, having poor performing models may make the CD larger and make other intermediate methods have no significant methods.
+The Diebold-Mariano test and Wilcoxon rank-sum test are two major tests for comparing between two competing forecasts. Another two-forecast test is the Giacomini-White test that can also assess the conditional predictive ability. A table of statistical signifiance tests and associated information follows from pages 822--825. Moreover, the Friedman test looks at detecting signifiance between multiple comepting methods, looking at the ranks of the methods sorted by mean errors. When performing significance testing, it is important to look at the amount of data included. For example, a very high number of series has a low CD $\rightarrow$ significant results for even small differences in models. This isn't a flaw -- results become more reliable and are statistically highly significant. On the other hand, having poor performing models may make the CD larger and make other intermediate methods have no significant methods.
 
 \subsection{Conclusion}
 Model evaluation is very important, one of the hardest tasks in forecasting. Basically, we need to benchmark the simplest and smartest ways, use accurate plots, avoid data leakage, use tsCV, and then choose the right evaluation measure before evenly distributing statistical models when testing against others.
 
-
 \section{Weighted interval score metric}
-I plan to read~\cite{bracher21}, and then summarize the results and its relevance to our current research focus in this section.
-\subsection{Evaluating epidemic forecasts in intervals}
-\subsection{Relevance}
+I read~\cite{bracher21} and then took notes on it.
+
+\subsection{Background}
+Epidemic forecasts are increasingly probabilisitic and require a way to store forecasts more effectively. The approach suggested by the paper is to store forecasts in the form of predictive quantiles/intervals. With this format, distributions can be stored in detail yet still require a better scoring metric than those currently available -- this paper will provide that!
+
+Logarithmic score is very popular, defined as $\log S(F,y) = \log(p_y)$, where $p_y$ is the probability assigned to the observed outcome $y$ by the forecast $F$. Larger values are better and FluSight uses this metric. Basically penalizes or gives gains if it falls in line with how likely it will be. An alternative to the logartihmic score (considered better) is the continuous ranked probability score which is a cumulative distribution function which simplifies to the ranked probability score with integers.
+
+\subsection{Interval format scores}
+Both scores cannot be evaluated directly if forecasts are stored as intervals. A proper score that only requires prediction intervals is the interval score $\rightarrow$ basically good score is within the prediction interval and worse (higher score) outside the farther you get, self-explanatory but useful. Consists of the width of the interval (sharpness of the forecast), penalty term for the lower end, and penalty of the upper term which increase in penalty as you get farther. Figure on page 3 makes a lot of sense for understanding this. 
+
+For more detail on the predictive distribution, common to report several central prediction intervals. To combine all this data into one score, a weighted interval score can be evaluated (formula redacted for time). WIS is a special case of the quantile score, proper for any set of nonnegative weights. A natrual choice can also approximate the continuous ranked probability score if needed. More simply, the score can be understand as a ``measure'' of distance between the predictive distribution and the true observation. 
+
+To compare different prediction methods at the same time, we have to add their scores over time and for various forecasts. We also should try to look at forecast quality over time across different horizons, and longer-term characteristics of an epidemic curve.
+
+As a comparison to other metrics in integer-valued outcomes, the WIS is a good approximation to the CRPS and take into account uncertainty in the forecast distribution, more so than the other methods. 
+
+It is important to know that WIS demonstrates sensitivity to distance while logS is a local score that ignores distance. While logcal scoring rules can be good for inference, sensitivity to distance is useful in decision-making. At the end of the day, it is up to the public health officials to what they value more, (WIS) sensitivity to distance with robust scoring that minimizes ``across the board'' or local logarithmic scores that make the penalty for a few very misguided forecasts much worse.
+
+The paper next goes into some applications of the WIS in FluSight, mentions why relative errors should be used with caution, and then concludes by explaining why CRPS and WIS are great options.
 
 \section{Code investigation}
 I plan to read through the Flusion and Local-Level-Forecasting codebases and write about what I noticed and questions I have.
 \subsection{Flusion}
-TO DO
-\subsection{Local-Level-Forecasting}
-TO DO
+Data-pipeline seems self-explanatory. The \textbf{eda.ipynb} file in the code/eda folder was very interesting, showcased all kinds of special datasets that were investigated as a part of the process, a very enjoyable read. A nice way to organize research thoughts and brainstorming I think, and creative graph design as well. GBQ, sarix seemed like just model code -- I'll look into it next week if I'm assigned it more. 
 
-GBM\_US\_NSSP\_public\_state\_pct.ipynb
+Lastly, the \textbf{flusion.R} file in the code/flusion folder was nice to read. I think the animal names for the ensemble vs GB only was kind of funny. I also got to find out the weightage of the models that I was curious about during the paper $\rightarrow$ 25\% to GB methods and 50\% to sarix methods. While they don't add up to 2, I just assumed they wanted a clearer way of doubling the weightage of sarix without messing around with $\frac{1}{3}$ messing up calculations (this is an unnecessary tangent). Anyway, this code file showed me the entire ``pipeline''/process of the ensemble training, albeit calling other functions at certain times instead of the entire codebase in one file but instructive regardless.
+\subsection{Local-Level-Forecasting}
+\subsubsection{forecast\_model.py}
+Code looks like implements LightGBM, more technical than the papers I was just reading, what stood out to me was the quantile forecast generation. I'm a bit confused by the concept of training at a specific percentile and was curious as to what percentiles/quantiles that the code uses right now. 
+\subsubsection{GBM\_US\_NSSP\_public\_state\_pct.ipynb}
+Looks like preprocessing and a train/test split, I've seen these before so this makes sense. I might need to take a further look on some of these packages and libraries about time series data, however, since I'm much more unfamiliar with that.
+\subsubsection{GBQR\_forecasting\_plot.R}
+I think that this just has a bunch of CSV reading in and out, looks like merging state data?
+\subsubsection{forecasting\_summary\_plot\_ftn.R}
+This code file looks very interesting, computing the WIS score, estimating the median (that's the quantile we use). \textbf{What is ribbon data?} I'm a bit confused by that, is it a ``band'' of predictions or confidence intervals of the predictions? Also, I think this is the code file I might read more into the next week.
+\subsubsection{preprocess\_and\_plot.R}
+This file was just pre-processing, seems useful to write about here in case I'm curious or need to know how the data was filtered prior to the model training process. Still confused about ribbons, however.
 
 \section{Miscellaneous}
 I'll just store ideas I thought were interesting in this section and investigate them.
 \subsection{Taylor polynomials for forecasting}
-TO DO
+Just found about using the SIR model and approximating it with Taylor polynomials maybe, not much surpisingly compared to last week when I saw a bit more. I might look into this for my own thesis purposes to be honest, seems interesting. 
 
 
 \printbibliography

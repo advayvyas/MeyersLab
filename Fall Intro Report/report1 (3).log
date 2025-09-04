@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.8.27)  4 SEP 2025 02:12
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.8.27)  4 SEP 2025 00:32
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -639,38 +639,36 @@ Overfull \hbox (13.08609pt too wide) in paragraph at lines 51--52
 [6]
 
 [7]
-
-[8]
-Overfull \hbox (19.54332pt too wide) in paragraph at lines 112--112
+Overfull \hbox (19.54332pt too wide) in paragraph at lines 105--105
 []\OT1/cmr/m/n/12 Hansika Hewamalage, Klaus Ackermann, and Christoph Bergmeir. ``Forecast
  []
 
 
 
-[9] (report1.aux)
+[8] (report1.aux)
  ***********
 LaTeX2e <2025-06-01> patch level 1
 L3 programming layer <2025-07-20>
  ***********
 Package rerunfilecheck Info: File `report1.out' has not changed.
-(rerunfilecheck)             Checksum: D7EB41A0CDA593CAA8C6F7C5081AF5DF;3918.
+(rerunfilecheck)             Checksum: 58F543D09F5E7E0AB25E60D97925984B;3067.
 Package logreq Info: Writing requests to 'report1.run.xml'.
 \openout1 = `report1.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 19196 strings out of 470075
- 334924 string characters out of 5482204
- 1172584 words of memory out of 5000000
- 47316 multiletter control sequences out of 15000+600000
+ 19189 strings out of 470075
+ 334778 string characters out of 5482204
+ 1169581 words of memory out of 5000000
+ 47313 multiletter control sequences out of 15000+600000
  636742 words of font info for 78 fonts, out of 8000000 for 9000
  0 hyphenation exceptions out of 8191
- 90i,6n,93p,1051b,1335s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 90i,6n,93p,1051b,1337s stack positions out of 10000i,1000n,20000p,200000b,200000s
  <C:\Users\advay\AppData\Local\MiKTeX\2.9\fonts/pk/ljfour/jknappen/ec/dpi600\tcrm1200.pk><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmcsc10.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmmi12.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmmi8.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr17.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmti12.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmtt12.pfb>
-Output written on report1.pdf (9 pages, 137468 bytes).
+Output written on report1.pdf (8 pages, 130611 bytes).
 PDF statistics:
- 227 PDF objects out of 1000 (max. 8388607)
- 193 compressed objects within 2 object streams
- 36 named destinations out of 1000 (max. 500000)
- 177 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 208 PDF objects out of 1000 (max. 8388607)
+ 175 compressed objects within 2 object streams
+ 32 named destinations out of 1000 (max. 500000)
+ 153 words of extra memory for PDF output out of 10000 (max. 10000000)
 

@@ -235,8 +235,8 @@ INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\public\amsfonts\symbol
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\public\amsfonts\symbols\msbm10.tfm
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\public\amsfonts\symbols\msbm7.tfm
 OUTPUT report1.toc
-INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\public\cm\cmbx12.tfm
 INPUT C:\Users\advay\AppData\Local\MiKTeX\2.9\fonts\map\pdftex\pdftex.map
+INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\public\cm\cmbx12.tfm
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\jknappen\ec\tcrm1200.tfm
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\public\cm\cmti12.tfm
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\tfm\public\cm\cmcsc10.tfm
@@ -254,6 +254,8 @@ INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\c
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmcsc10.pfb
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmmi12.pfb
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmmi12.pfb
+INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmmi8.pfb
+INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmmi8.pfb
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmr12.pfb
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmr12.pfb
 INPUT C:\Users\advay\AppData\Roaming\MiKTeX\2.9\fonts\type1\public\amsfonts\cm\cmr17.pfb
