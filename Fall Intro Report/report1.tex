@@ -45,6 +45,23 @@ The paper states that the forecast model construction plus evaluation usually co
     \item Statistical tests for significance
 \end{itemize}
 
+\subsubsection{Data partitioning}
+The paper now examines guidelines of data partitioning. Fixed origin setup is one of the fastest evaluation setups since no new training data is added. However, with single series forecasting, the setup only provides one forecast. It is recommended to have multiple forecasts instead to see the forecast distribution. A drawback of fixed origin setup is that errors might arise from the patterns in that particular region. 
+
+On the other hand, rolling origin (a.k.a. time series cross-validation) evaluation setups update the forecast origin every step and the model encounters new actual data. The two options available now are to recalibrate with new data completely or update the model as input. Traditional models normally recalibrate while ML models just accept new data and periodically retrain the model due to it not being an option. Rolling origin can be conducted through either expanding the window or rolling the window setup. Expanding the window retains all the data from the very beginning, effectively just slowly growing the total training data. Alternatively, a rolling window setup makes sure that the data ``length'' stays the same - the time period length as the old data is deleted to make room for the new data. It is also possible to start with an expanding window and then transition to a rolling window as needed.
+
+A common misconception is that temporal order is important for the time series during training. A form of data partitioning that utilizes this fact is k-fold cross-validation, which splits up the data into different ``folds'' randomly and repartitions training and test data. However, it does have a couple drawbacks like causing problems with non-stationarities, difficulty in capturing serial correlation, and training data containing future data while test data contains old data. Even with these problems, pure AR models can benefit from this technique. Additionally, data-partitioning for non-stationary data is very hard (the paper is quite vague on this, around page 811). 
+
+In conclusion, data partitioning boils down to the length of the series (kind of), where short series choose k-fold CV while the more common longer series use tsCV (time-series cross-validation).
+
+\subsubsection{Error measures}
+Error measures are a key focus of this week's work so this section should be particularly important. Scale-dependent forecast bias can be assessed with Mean Error, while two other scale-dependent measures usually used in regression are MSE and MAE. However, we should use scale-independent (next to impossible) but we will examine a wide variety of measures. A couple examples are MSE and RMSE that optimize for the mean, MAE and MASE that optimize for the median, and some researchers apply a mix of these error models. Actually, the mix/blend of these models is the most optimal method as of now and is highly recommended. I think we will be doing weighted interval score but I'm curious to see how it is similar/different to mixed error methods in time-series data. On pages 814--815, various common error measures are listed. On pages 816--820, a comphrensive list of error measures is listed by category for reference. 
+
+\subsubsection{Statistical significance tests}
+The Diebold-Mariano test and Wilcoxon rank-sum test are two major tets for comparing between two competing forecasts. Another two-forecast test is the Giacomini-White test that can also assess the conditional predictive ability. A table of statistical signifiance tests and associated information follows from pages 822--825. Moreover, the Friedman test looks at detecting signifiance between multiple comepting methods, looking at the ranks of the methods sorted by mean errors. When performing significance testing, it is important to look at the amount of data included. For example, a very high number of series has a low CD $\rightarrow$ significant results for even small differences in models. This isn't a flaw -- results become more reliable and are statistically highly significant. On the other hand, having poor performing models may make the CD larger and make other intermediate methods have no significant methods.
+
+\subsection{Conclusion}
+Model evaluation is very important, one of the hardest tasks in forecasting. Basically, we need to benchmark the simplest and smartest ways, use accurate plots, avoid data leakage, use tsCV, and then choose the right evaluation measure before evenly distributing statistical models when testing against others.
 
 
 \section{Weighted interval score metric}
