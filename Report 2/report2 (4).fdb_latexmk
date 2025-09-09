@@ -1,17 +1,15 @@
 # Fdb version 4
-["biber report2"] 0 "report2.bcf" "report2.bbl" "report2" 1757450694.7913 0
+["biber report2"] 0 "report2.bcf" "report2.bbl" "report2" 1757442348.84305 0
   "refs.bib" 0 -1 0 ""
   "report2.bcf" 0 -1 0 "pdflatex"
   (generated)
   "report2.bbl"
   "report2.blg"
   (rewritten before read)
-["pdflatex"] 1757450689.83279 "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Report 2/report2.tex" "report2.pdf" "report2" 1757450694.79347 0
+["pdflatex"] 1757442345.2765 "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Report 2/report2.tex" "report2.pdf" "report2" 1757442348.84525 0
   "../advay.sty" 1756720709 2213 f70e379103d0dd03a3d205aa210b71c1 ""
   "C:/Users/advay/AppData/Local/MiKTeX/2.9/fonts/map/pdftex/pdftex.map" 1756763721 25678 aa7c8fd3909e804e7d85441c21595406 ""
-  "C:/Users/advay/AppData/Local/MiKTeX/2.9/fonts/pk/ljfour/jknappen/ec/dpi600/tcrm1200.pk" 1756402437 14064 e1d686bb1840eb5aabe78751eefc62b3 ""
   "C:/Users/advay/AppData/Local/MiKTeX/2.9/miktex/data/le/pdftex/pdflatex.fmt" 1756323843 10057006 712f602210b385183caa0eae5eb5df65 ""
-  "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/jknappen/ec/tcrm1200.tfm" 993062508 1444 95ffe0f19b974d50849790c8225c7ef7 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1233951848 1004 54797486969f23fa377b128694d548df ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1233951848 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/tfm/public/amsfonts/symbols/msam10.tfm" 1233951854 916 f87d7c45f9c908e672703b83b72241a3 ""
@@ -116,14 +114,13 @@
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/tools/calc.sty" 1749468414 10374 2ffd4f27c7f90b8a300608069537743c ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/url/url.sty" 1388490452 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "C:/Users/advay/AppData/Roaming/MiKTeX/2.9/tex/latex/xcolor/xcolor.sty" 1729265222 55384 b454dec21c2d9f45ec0b793f0995b992 ""
-  "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Report 2/report2.tex" 1757450688 3288 8125f30f91e6bc76f3b5003dd6d879c8 ""
-  "report2.aux" 1757450693 1400 7b46aa60d6e0f6a2d5574dbb14348c39 "pdflatex"
+  "c:/Users/advay/My Drive/UT Notes/Research/MeyersLab/Report 2/report2.tex" 1757442343 2516 944ea8c7a67fa9fe9b2618b2b2359ef0 ""
+  "report2.aux" 1757442347 1242 481ab336845293546f90b20d4a5f7346 "pdflatex"
   "report2.bbl" 0 -1 0 "biber report2"
-  "report2.out" 1757450693 1294 ec28e29eefafaebbc3f889d845b6e9ac "pdflatex"
-  "report2.run.xml" 1757450693 2320 1c97149c35b1ff09a08e33437c0b3c2d "pdflatex"
-  "report2.tex" 1757450688 3288 8125f30f91e6bc76f3b5003dd6d879c8 ""
-  "report2.toc" 1757450693 659 71702501439e8a30ec17ec9364a47836 "pdflatex"
-  "workflow.png" 1757442493 101963 80a09219dbfd5896313d0d8d7812c626 ""
+  "report2.out" 1757442347 1294 ec28e29eefafaebbc3f889d845b6e9ac "pdflatex"
+  "report2.run.xml" 1757442347 2320 1c97149c35b1ff09a08e33437c0b3c2d "pdflatex"
+  "report2.tex" 1757442343 2516 944ea8c7a67fa9fe9b2618b2b2359ef0 ""
+  "report2.toc" 1757442347 659 45d039e4b9ba97c50e2b567776a6ea29 "pdflatex"
   (generated)
   "report2.aux"
   "report2.bcf"
