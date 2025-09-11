@@ -22,12 +22,11 @@
 
 
 \section{Flu-Metrocast}
-
-
 \subsection{Dashboard}
 The dashboard has a scroller for the forecasts and the ability to select multiple forecasts. This forecast evaluation slider is quite neat, with the horizon at the end and how long the interval is. The evaluation tab also has a space to look at the various values and metrics for each forecast (as well as a heatmap). 
 
 \section{Gradient boosting model}
+I couldn't find the weighted interval score anywhere.
 \subsection{Data preprocessing methods}
 Removed COVID data to offset influenza and COVID mix-ups likely, added forecast targets. Used bags to ``bootstrap'' the data along with the gradient boosting. Used feature importance, how is that calculated? How is ``horizon'' the most important feature, isn't that we are predicting? Kept important features, scaled back to original, renamed, set up quantile. Made predictions using model.
 
