@@ -20,6 +20,28 @@
 
 \tableofcontents
 
+
+\section{Flu-Metrocast}
+
+
+\subsection{Dashboard}
+The dashboard has a scroller for the forecasts and the ability to select multiple forecasts. This forecast evaluation slider is quite neat, with the horizon at the end and how long the interval is. The evaluation tab also has a space to look at the various values and metrics for each forecast (as well as a heatmap). 
+
+\section{Gradient boosting model}
+\subsection{Data preprocessing methods}
+Removed COVID data to offset influenza and COVID mix-ups likely, added forecast targets. Used bags to ``bootstrap'' the data along with the gradient boosting. Used feature importance, how is that calculated? How is ``horizon'' the most important feature, isn't that we are predicting? Kept important features, scaled back to original, renamed, set up quantile. Made predictions using model.
+
+
+\section{Alternative methods for prediction}
+I just searched up some alternative methods and found the following:
+\begin{itemize}
+    \item Hierarchical forecast reconciliation
+    \item Spatio-temporal GAMs (mixed-effects)
+    \item Bayesian hierarchical spatio-temporal models
+    \item Gaussian process regression
+    \item Deep learning
+\end{itemize}
+
 \section{R package creation}
 I'm taking notes on ``R Packages (2e)'' by Hadley Wickham and Jennifer Bryan.
 
@@ -57,12 +79,5 @@ A list of useful functions:
     \item \verb|check()|
 \end{itemize}
 
-
-\section{Flu-Metrocast}
-\subsection{Weighted interval score calculation}
-\subsection{Data preprocessing methods}
-\section{Metrocast-dashboard}
-\subsection{Formatting of dashboard}
-\section{Gradient boosting model}
 
 \end{document}

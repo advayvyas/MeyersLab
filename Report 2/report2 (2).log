@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.8.27)  11 SEP 2025 03:16
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.8.27)  11 SEP 2025 03:11
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -620,14 +620,14 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 {C:/Users/advay/AppData/Local/MiKTeX/2.9/fonts/map/pdftex/pdftex.map}]
 
 [2]
-Overfull \hbox (11.98659pt too wide) in paragraph at lines 55--56
+Overfull \hbox (11.98659pt too wide) in paragraph at lines 53--54
 \OT1/cmr/m/n/12 easy editing and []\OT1/cmtt/m/n/12 build_readme() \OT1/cmr/m/n/12 renders the file. Lastly, the book recommends
  []
 
-<workflow.png, id=54, 340.1508pt x 233.673pt>
+<workflow.png, id=61, 340.1508pt x 233.673pt>
 File: workflow.png Graphic file (type png)
 <use workflow.png>
-Package pdftex.def Info: workflow.png  used on input line 59.
+Package pdftex.def Info: workflow.png  used on input line 57.
 (pdftex.def)             Requested size: 312.00119pt x 214.35066pt.
 
 
@@ -638,25 +638,38 @@ Package pdftex.def Info: workflow.png  used on input line 59.
 LaTeX2e <2025-06-01> patch level 1
 L3 programming layer <2025-07-20>
  ***********
-Package rerunfilecheck Info: File `report2.out' has not changed.
-(rerunfilecheck)             Checksum: BF53A2E46DD98DE1941F04470AB18A87;1061.
+
+
+Package rerunfilecheck Warning: File `report2.out' has changed.
+(rerunfilecheck)                Rerun to get outlines right
+(rerunfilecheck)                or use package `bookmark'.
+
+Package rerunfilecheck Info: Checksums for `report2.out':
+(rerunfilecheck)             Before: EACA10BA27EF967490FB9A1992FB776F;1338
+(rerunfilecheck)             After:  E609C48F16D9181E37142729E6007EC5;904.
 Package logreq Info: Writing requests to 'report2.run.xml'.
 \openout1 = `report2.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 18942 strings out of 470075
- 329639 string characters out of 5482204
- 1165434 words of memory out of 5000000
- 47087 multiletter control sequences out of 15000+600000
+ 18944 strings out of 470075
+ 329659 string characters out of 5482204
+ 1165431 words of memory out of 5000000
+ 47088 multiletter control sequences out of 15000+600000
  636441 words of font info for 77 fonts, out of 8000000 for 9000
  0 hyphenation exceptions out of 8191
  90i,6n,93p,769b,803s stack positions out of 10000i,1000n,20000p,200000b,200000s
+
+pdfTeX warning (dest): name{subsection.1.2} has been referenced but does not exist, replaced by a fixed one
+
+
+pdfTeX warning (dest): name{subsection.1.1} has been referenced but does not exist, replaced by a fixed one
+
  <C:\Users\advay\AppData\Local\MiKTeX\2.9\fonts/pk/ljfour/jknappen/ec/dpi600\tcrm1200.pk><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmr17.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmti12.pfb><C:/Users/advay/AppData/Roaming/MiKTeX/2.9/fonts/type1/public/amsfonts/cm/cmtt12.pfb>
-Output written on report2.pdf (4 pages, 152238 bytes).
+Output written on report2.pdf (4 pages, 151615 bytes).
 PDF statistics:
- 102 PDF objects out of 1000 (max. 8388607)
- 81 compressed objects within 1 object stream
- 14 named destinations out of 1000 (max. 500000)
- 62 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 107 PDF objects out of 1000 (max. 8388607)
+ 86 compressed objects within 1 object stream
+ 15 named destinations out of 1000 (max. 500000)
+ 70 words of extra memory for PDF output out of 10000 (max. 10000000)
 
