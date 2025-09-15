@@ -1,0 +1,391 @@
+---
+title: "XGBoost_3season_dummy"
+output: html_document
+---
+
+
+```{r data}
+library(here)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(xgboost)
+#library(gbm)
+library(caret)
+library(purrr)
+library(fastDummies)
+
+
+```
+
+## 1. Data were loaded and merged for the required variables.
+```{r}
+all_forecasting_metric <- readr::read_csv(here("data", "forecasting_metrics_3seasons.csv"), show_col_types = FALSE)
+all_rmse <- readr::read_csv(here("data", "hsa_state_peak_all.csv"), show_col_types = FALSE)
+
+all_rmse <- all_rmse %>%
+  filter(season !="2025/26")
+
+#  read.csv("data/forecasting_metrics_3seasons.csv")
+#all_rmse <- read.csv("data/hsa_state_peak_all.csv")
+```
+
+
+
+```{r}
+
+rmse_season_wide <- all_rmse %>%
+  filter(included == "Included") %>%
+  select(hsa_nci_id, season, RMSE_season) %>%
+  distinct() %>% 
+  pivot_wider(names_from = season, values_from = RMSE_season)
+
+library(GGally)
+
+ggpairs(rmse_season_wide[,-1],
+        lower = list(continuous = wrap("points", alpha=0.6, size=1.5)),
+        upper = list(continuous = wrap("cor", size=4)),
+        diag  = list(continuous = wrap("densityDiag")))
+
+
+```
+
+```{r}
+
+res_metric <- all_forecasting_metric %>% 
+  filter(is.finite(MAPE), is.finite(MAPE)) %>%
+  mutate(target_end_date = as.Date(target_end_date),
+         season = case_when(
+           between(target_end_date, ymd("2022-09-01"), ymd("2023-04-30")) ~ "2022/23",
+           between(target_end_date, ymd("2023-09-01"), ymd("2024-04-30")) ~ "2023/24",
+           between(target_end_date, ymd("2024-09-01"), ymd("2025-04-30")) ~ "2024/25",
+           TRUE ~ NA_character_
+         )
+    ) %>%
+  group_by(state, hsa_nci_id, season, horizon) %>%
+  summarise(mean_MAPE = mean(MAPE),
+            mean_MAPE.state = mean(MAPE.state),
+            mean_coverage = mean(coverage),
+            mean_coverage.state = mean(coverage.state),
+            mean_wis = mean(wis),
+            mean_wis.state = mean(wis.state))
+
+
+res_all <- res_metric %>%
+  pivot_wider(
+    names_from = horizon,
+    values_from = c(mean_MAPE, mean_MAPE.state,
+                    mean_coverage, mean_coverage.state,
+                    mean_wis, mean_wis.state),
+    names_prefix = "h"
+  ) %>%
+  left_join(all_rmse 
+            #%>% mutate(hsa_nci_id = as.character(hsa_nci_id))
+            , by = c("state", "hsa_nci_id", "season")) %>%
+  mutate(rel_diff_wis_h1 = (mean_wis_h1-mean_wis.state_h1)/mean_wis.state_h1,
+         rel_diff_wis_h2 = (mean_wis_h2-mean_wis.state_h2)/mean_wis.state_h2,
+         rel_diff_wis_h3 = (mean_wis_h3-mean_wis.state_h3)/mean_wis.state_h3,
+         rel_diff_wis_h4 = (mean_wis_h4-mean_wis.state_h4)/mean_wis.state_h4,
+         logit_pop_ratio = log(pop_ratio/(1-pop_ratio)),
+         logit_pct_urban = log(pct_urban/(1-pct_urban)),
+         diff_wis_h1 = mean_wis_h1-mean_wis.state_h1,
+         diff_wis_h2 = mean_wis_h2-mean_wis.state_h2,
+         diff_wis_h3 = mean_wis_h3-mean_wis.state_h3,
+         diff_wis_h4 = mean_wis_h4-mean_wis.state_h4
+  ) %>%
+  filter(
+    !is.na(logit_pop_ratio) & is.finite(logit_pop_ratio)
+  )
+
+season_dummy <- model.matrix(~ season - 1, data = res_all)
+
+df <- cbind(res_all, season_dummy) 
+df$season <- factor(df$season, levels = c("2022/23", "2023/24", "2024/25"))
+
+```
+
+
+## XGBoost Season - 3season_dummy
+```{r}
+library(dplyr)
+library(tidyr)
+library(xgboost)
+library(Matrix)
+
+## 0) 데이터 준비: train/test 분리 (시즌 컬럼이 factor 또는 문자열로 있다고 가정)
+stopifnot("season" %in% names(df))
+
+train_df <- df %>% filter(season %in% c("2022/23", "2023/24", "2024/25"))
+#train_df <- df %>% filter(season %in% c("2024/25"))
+test_df  <- df %>% filter(season %in% c("2023/24"))
+
+
+X_train <- model.matrix(
+  ~ `season2022/23` + `season2023/24` + `season2024/25` + 
+    pop_ratio + pct_urban + 
+    log(density_state) + log(density_hsa) +
+    log(population_state) + log(population_hsa) - 1,
+  data = train_df
+)
+y_train <- train_df$diff_wis_h3
+
+
+X_test <- model.matrix(
+  ~ `season2022/23` + `season2023/24` + `season2024/25` + 
+    pop_ratio + pct_urban + 
+    log(density_state) + log(density_hsa) +
+    log(population_state) + log(population_hsa) - 1,
+  data = test_df
+)
+y_test <- test_df$diff_wis_h3
+
+## 희소행렬 권장 (성능/메모리)
+dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+dtest  <- xgb.DMatrix(data = X_test,  label = y_test)
+
+## 2) 파라미터 그리드 (있으면 튜닝, 없으면 고정값으로 진행)
+param_grid <- expand.grid(
+  max_depth        = c(5, 7, 9, 11),
+  eta              = c(0.05, 0.1, 0.2, 0.3),
+  min_child_weight = c(5, 7, 9, 11),
+  subsample        = c(0.8, 0.9),
+  colsample_bytree = c(0.8, 0.9),
+  KEEP.OUT.ATTRS   = FALSE,
+  stringsAsFactors = FALSE
+)
+
+set.seed(123)
+
+## 3) k-fold CV + early stopping로 최적 조합/rounds 찾기
+best <- list(score = Inf, params = NULL, nrounds = NA)
+
+for (i in seq_len(nrow(param_grid))) {
+  params <- list(
+    objective = "reg:squarederror",
+    eval_metric = "rmse",
+    eta = param_grid$eta[i],
+    max_depth = param_grid$max_depth[i],
+    min_child_weight = param_grid$min_child_weight[i],
+    subsample = param_grid$subsample[i],
+    colsample_bytree = param_grid$colsample_bytree[i]
+  )
+
+  cv <- xgb.cv(
+    params = params,
+    data = dtrain,
+    nrounds = 5000,
+    nfold = 5,
+    early_stopping_rounds = 100,
+    verbose = 0
+  )
+
+  cv_score   <- min(cv$evaluation_log$test_rmse_mean)
+  best_round <- cv$best_iteration
+
+  if (cv_score < best$score) {
+    best$score   <- cv_score
+    best$params  <- params
+    best$nrounds <- best_round
+  }
+}
+
+best  # 확인용: 최적 파라미터/라운드/점수
+
+## 4) 최적 파라미터로 전체 train 재학습
+xgb_fit <- xgb.train(
+  params = best$params,
+  data   = dtrain,
+  nrounds = best$nrounds,
+  watchlist = list(train = dtrain),
+  verbose = 0
+)
+
+## 5) 테스트셋 예측 및 성능
+pred_test <- predict(xgb_fit, dtest)
+rmse <- sqrt(mean((y_test - pred_test)^2))
+mae  <- mean(abs(y_test - pred_test))
+
+cat(sprintf("Test RMSE = %.4f, MAE = %.4f\n", rmse, mae))
+
+## (선택) 중요도/플롯
+imp <- xgb.importance(model = xgb_fit, feature_names = colnames(X_train))
+print(head(imp))
+
+```
+
+
+
+```{r}
+xgb.plot.importance(imp)
+
+op <- par(no.readonly = TRUE)
+  par(mfrow = c(2,2))
+  
+  lim <- range(c(y_test, pred_test), na.rm = TRUE)
+  plot(y_test, pred_test, pch=16, cex=.6,
+       xlab="prediction", ylab="Actual",
+       main="Actual vs Prediction",
+       xlim = lim, ylim = lim)
+  abline(a=0, b = 1, lty=2)
+
+  
+  resid <- y_test - pred_test
+  plot(pred_test, resid, pch=16, cex=.6,
+       xlab="prediction", ylab="Residual (pred - y)",
+       main="Residuals vs Prediction")
+  abline(h=0, lty=2)
+
+  qqnorm(resid, main="Residuals QQ-plot"); qqline(resid)
+
+  rng <- range(c(y_test, pred_test), na.rm = TRUE)
+  breaks <- pretty(rng, n = 30)
+  hist(y_test, breaks = breaks, col = "gray", border = NA,
+       xlab = "y", main = "Target vs Prediction")
+  hist(pred_test, breaks = breaks, col = rgb(1,0,0,0.5), border = NA, add = TRUE)
+  legend("topright", legend = c("Actual","Pred"),
+         fill = c("gray", rgb(1,0,0,0.5)), bty="n")
+  par(op)
+```
+
+
+
+
+## Final Prediction
+```{r}
+
+library(tigris)
+library(stringr)
+us_map <- readRDS(here::here("data", "us_map_pop_sf.rds"))
+
+df_250K <- us_map %>%
+  filter(population_hsa >= 250000) %>%
+  select(state, hsa_nci_id, population_hsa, population_state, density_state,
+         density_hsa, pct_urban, pop_ratio, geometry_hsa, geometry) %>%
+  distinct() %>%
+  left_join(df %>%
+              ungroup() %>%
+              filter(season == '2024/25') %>%
+              select(state, hsa_nci_id, diff_wis_h1, diff_wis_h2, diff_wis_h3, 
+                     diff_wis_h4, `season2022/23`, `season2023/24`, `season2024/25`),
+            by = c("state", "hsa_nci_id"))
+
+df_250K <- df_250K %>%
+  mutate(
+    `season2022/23` = ifelse(is.na(`season2022/23`), 0, `season2022/23`),
+    `season2023/24` = ifelse(is.na(`season2023/24`), 1, `season2023/24`),
+    `season2024/25` = ifelse(is.na(`season2024/25`), 0, `season2024/25`)
+  )
+
+
+model_feats <- xgb_fit$feature_names
+print(model_feats)
+feats <- colnames(X_train)
+
+form <- ~ `season2022/23` + `season2023/24` + `season2024/25` +
+         pop_ratio + pct_urban +
+         log(density_state) + log(density_hsa) +
+         log(population_state) + log(population_hsa) - 1
+
+X_new <- model.matrix(form, data = df_250K, na.action = na.pass)
+X_new <- X_new[, model_feats, drop = FALSE]
+dm_new <- xgb.DMatrix(X_new)
+
+
+pred <- predict(xgb_fit, dm_new)
+
+df_250K_pred <- df_250K %>%
+  dplyr::mutate(pred = pred)
+
+#write.csv(res_all, "Local-level-forecasting/data/xgb_fit_3season_dummy.csv", row.names = FALSE)
+
+
+```
+
+## Add US map
+
+```{r}
+
+library(ggplot2)
+library(sf)
+
+#all_inc <- read.csv("Local-level-forecasting/data/hsa_state_inc.csv")
+all_inc <- readr::read_csv(here("data", "hsa_state_inc.csv"), show_col_types = FALSE)
+
+
+avail_hsa <- all_inc %>%
+  select(state, hsa_nci_id, week_end) %>%
+  group_by(state, hsa_nci_id) %>%
+  summarise(max_week_end = max(week_end),
+            min_week_end = min(week_end),
+            n = n()) %>%
+  filter(max_week_end == '2025-07-26')
+
+lower48 <- c(state.name, "District of Columbia")  # 48개 주 + DC
+lower48 <- setdiff(lower48, c("Alaska", "Hawaii")) # 알래스카/하와이 제외
+
+df_conus <- df_250K_pred %>% 
+  filter(state %in% lower48) %>%
+  mutate(available = ifelse(is.na(diff_wis_h3), 1, 0))
+
+
+
+us_map1 <- us_map %>% 
+  filter(state %in% lower48) %>%
+  left_join(avail_hsa %>%
+              filter(n == 148), by = c("state", "hsa_nci_id")) %>%
+  mutate(available = ifelse(is.na(n), 0, 1))
+
+
+
+
+ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map1), "geometry_hsa"),
+          aes(fill = factor(available)), color = 'gray20') +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map1), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_manual(values = c("0" = "white", "1" = "skyblue"),
+                    name = "",
+                    labels = c("Not in Data", "HSA in Data")) +
+  coord_sf() + 
+  theme_void() +
+  theme(
+    legend.text  = element_text(size = 20)
+  )
+
+ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(df_conus), "geometry_hsa"),
+          aes(fill = diff_wis_h3), color = 'gray20') +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map1), "geometry_hsa"),
+          fill = NA, color = 'gray20') +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map1), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "magma", direction = 1, na.value = "white",
+                       name = "diff wis h3") + 
+  coord_sf() + theme_void() +
+  labs(title = "diff wis h3")
+
+unavail_hsa <- us_map1 %>%
+  as.data.frame() %>%              # 혹시 tibble이면 sf 변환 위해
+  sf::st_as_sf() %>%
+  sf::st_set_geometry("geometry_hsa") %>%
+  dplyr::filter(available == 0, population_hsa > 250000)
+
+
+
+ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(df_conus), "geometry_hsa"),
+          aes(fill = pred), color = 'gray20') +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map1), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map1), "geometry_hsa"),
+          fill = NA, color = 'gray20') +
+  geom_sf(data = unavail_hsa,
+          fill = NA, color = "red", linewidth = 0.5) +
+  scale_fill_viridis_c(option = "magma", direction = 1, na.value = "white",
+                       name = "Prediction", 
+                       limits = c(min(df_250K_pred$diff_wis_h3, na.rm = TRUE),
+                                  max(df_250K_pred$diff_wis_h3, na.rm = TRUE))) +
+  coord_sf() + theme_void() +
+  labs(title = "Prediction")
+
+```

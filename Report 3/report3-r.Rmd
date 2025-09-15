@@ -1,0 +1,54 @@
+---
+title: "Report 3"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(corrplot)
+library(mosaic)
+library(moderndive)
+library(effectsize)
+```
+
+# Introduction
+This week, I plan to use the methods I mentioned last week to estimate the WIS differences. I'll process and prepare the data and then apply several models to try and see which work best. 
+
+# Data processing
+
+```{r}
+
+
+
+```
+
+# Support Vector Regression (SVR)
+## Theoretical background
+## Implementation
+
+# Bayesian Additive Regression Trees
+## Theoretical background
+## Implementation
+
+# Elastic Net / LASSO / Ridge
+## Theoretical background
+## Implementation
+
+# Conclusion
+
