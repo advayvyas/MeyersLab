@@ -25,6 +25,11 @@ library(corrplot)
 library(mosaic)
 library(moderndive)
 library(effectsize)
+library(tidyr)
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
 ```
 
 # Introduction
@@ -32,9 +37,30 @@ This week, I plan to use the methods I mentioned last week to estimate the WIS d
 
 # Data processing
 
-```{r}
 
+## Load and preprocess data (borrowed from other file)
+```{r, fig.height = 6, fig.width = 6}
+df <- readr::read_csv("GBQR_diff_wis.csv", show_col_types = FALSE)
 
+df_season <- df %>%
+  filter(season == "2023/24")
+
+# ggpairs(df_season %>%
+#           ungroup() %>%
+#           mutate(log_density_state = log(density_state),
+#                  log_density_hsa = log(density_hsa),
+#                  log_population_state = log(population_state),
+#                  log_population_hsa = log(population_hsa)) %>%
+#           select(diff_wis_h1, diff_wis_h2, diff_wis_h3, diff_wis_h4, 
+#                  pop_ratio, pct_urban, log_density_state, log_density_hsa, 
+#                  log_population_state, log_population_hsa),
+#         lower = list(continuous = wrap("points", alpha=0.6, size=1.5)),
+#         upper = list(continuous = wrap("cor", size=4)),
+#         diag  = list(continuous = wrap("densityDiag")))
+
+cor_matrix = cor(df[, 4:ncol(df_season)])
+# corrplot.mixed(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, upper="color", lower="number", diag="l")
+corrplot(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, type = "upper", method = "ellipse", diag = TRUE)
 
 ```
 
@@ -44,7 +70,23 @@ This week, I plan to use the methods I mentioned last week to estimate the WIS d
 
 # Bayesian Additive Regression Trees
 ## Theoretical background
+
 ## Implementation
+```{r}
+library(dbarts)
+
+bart_fit <- bart(
+  x.train = df_season[, c("pop_ratio","pct_urban",
+                          "density_state","density_hsa",
+                          "population_state","population_hsa")],
+  y.train = df_season$diff_wis_h3,
+  verbose = TRUE, keeptrees = TRUE
+)
+
+pred <- predict(bart_fit, newdata = df_season)
+
+apply(pred, 2, quantile, probs = c(0.025, 0.975))
+```
 
 # Elastic Net / LASSO / Ridge
 ## Theoretical background
