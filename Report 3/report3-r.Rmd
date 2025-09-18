@@ -3,14 +3,14 @@ title: "Report 3"
 author: "Advay Vyas"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
-  pdf_document:
+  html_document:
     toc: true
 urlcolor: blue
 linkcolor: red
 ---
 
 ```{r global_options, echo=FALSE}
-knitr::opts_chunk$set(fig.height=8, fig.width=8, fig.align = "center", warning=FALSE, echo=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "center", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
 ```
 
 ------------------------------------------------------------------------
@@ -36,27 +36,11 @@ library(GGally)
 This week, I plan to use the methods I mentioned last week to estimate the WIS differences. I'll process and prepare the data and then apply several models to try and see which work best. 
 
 # Data processing
-
-
-## Load and preprocess data (borrowed from other file)
 ```{r, fig.height = 6, fig.width = 6}
 df <- readr::read_csv("GBQR_diff_wis.csv", show_col_types = FALSE)
 
 df_season <- df %>%
   filter(season == "2023/24")
-
-# ggpairs(df_season %>%
-#           ungroup() %>%
-#           mutate(log_density_state = log(density_state),
-#                  log_density_hsa = log(density_hsa),
-#                  log_population_state = log(population_state),
-#                  log_population_hsa = log(population_hsa)) %>%
-#           select(diff_wis_h1, diff_wis_h2, diff_wis_h3, diff_wis_h4, 
-#                  pop_ratio, pct_urban, log_density_state, log_density_hsa, 
-#                  log_population_state, log_population_hsa),
-#         lower = list(continuous = wrap("points", alpha=0.6, size=1.5)),
-#         upper = list(continuous = wrap("cor", size=4)),
-#         diag  = list(continuous = wrap("densityDiag")))
 
 cor_matrix = cor(df[, 4:ncol(df_season)])
 # corrplot.mixed(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, upper="color", lower="number", diag="l")
@@ -67,9 +51,81 @@ corrplot(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, type =
 # Support Vector Regression (SVR)
 ## Theoretical background
 ## Implementation
+```{r}
+library(e1071)
+```
+### Feature Importance
+```{r, fig.width = 6}
+svr_fit_linear = svm(diff_wis_h3 ~ pop_ratio + pct_urban +
+                log(density_state) + log(density_hsa), data = df_season, type = "eps-regression", kernel = "linear")
+svr_coefs = coef(svr_fit_linear)
+
+svr_coefs_df = data.frame(
+  variable = names(svr_coefs),
+  coef     = as.numeric(svr_coefs)
+)
+
+svr_coefs_df = svr_coefs_df[2:5,]
+
+svr_coefs_df$importance = abs(svr_coefs_df$coef)
+
+# sort by importance descending
+svr_coefs_df = svr_coefs_df[order(-svr_coefs_df$importance), ]
+
+ggplot(svr_coefs_df) + geom_col(aes(x = reorder(variable, -importance), y = importance), fill='skyblue', col='black') + labs(x = "Variable", y = "Importance", title = "SVR Variables by Importance")
+```
+
+
+### Predictions
+```{r}
+B = 200
+preds_boot = matrix(NA, nrow = nrow(df_season), ncol = B)
+set.seed(1)
+
+for (b in 1:B) {
+  idx = sample(seq_len(nrow(df_season)), replace = TRUE)
+  svr_b = svm(diff_wis_h3 ~ pop_ratio + pct_urban +
+                log(density_state) + log(density_hsa),
+              data = df_season[idx, ], 
+              type = "eps-regression", kernel = "radial",
+              cost = 1, epsilon = 0.1)
+  preds_boot[, b] = predict(svr_b, newdata = df_season)
+}
+
+ci_low  = apply(preds_boot, 1, quantile, probs = 0.025)
+ci_high = apply(preds_boot, 1, quantile, probs = 0.975)
+pred_median = apply(preds_boot, 1, median)
+
+svr_predictions = data.frame(
+  observed = df_season$diff_wis_h3,
+  estimate = pred_median,
+  ci_low = ci_low,
+  ci_high = ci_high
+)
+
+coverage_95_svr = mean(
+  svr_predictions$observed >= svr_predictions$ci_low &
+  svr_predictions$observed <= svr_predictions$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r, fig.width = 6}
+ggplot(svr_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_h3", y = "Observed diff_wis_h3",
+       title = "Observed vs Predicted with 95% Prediction Intervals", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_svr, nrow(svr_predictions))) +
+  theme_minimal()
+```
+
+
 
 # Bayesian Additive Regression Trees
 ## Theoretical background
+This model is able to use multiple trees to spread out complex predictors and effects. It also has in-built feature importance and natively returns confidence intervals, which is really useful. 
 
 ## Implementation
 ```{r}
@@ -77,20 +133,146 @@ library(dbarts)
 
 bart_fit <- bart(
   x.train = df_season[, c("pop_ratio","pct_urban",
-                          "density_state","density_hsa",
-                          "population_state","population_hsa")],
+                          "density_state","density_hsa")],
   y.train = df_season$diff_wis_h3,
-  verbose = TRUE, keeptrees = TRUE
+  verbose = FALSE, keeptrees = TRUE
 )
-
-pred <- predict(bart_fit, newdata = df_season)
-
-apply(pred, 2, quantile, probs = c(0.025, 0.975))
 ```
 
-# Elastic Net / LASSO / Ridge
+### Feature Importance
+We use variable inclusion proportions as a way to check the importance of each variable. They all look pretty even for now.
+```{r, fig.width = 7}
+bart_vi = as.data.frame(bart_fit$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+
+ggplot(bart_vi) + geom_col(aes(x = reorder(variable, -avg), y = avg), fill='skyblue', col='black') + labs(x = "Variable", y = "Importance", title = "BART Variables by Importance")
+
+```
+
+### Predictions
+Comparing to the GAM graph, about 10% more of the predictions are within the 95% confidence interval, which I think is a good sign for this route of modeling/training/fitting.
+```{r}
+pred = predict(bart_fit, newdata = df_season)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = (bart_predictions$ci_low + bart_predictions$ci_high) / 2
+bart_predictions$observed = df_season$diff_wis_h3
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+```
+
+Looks pretty good I think, kind of hard to see at first glance but 67% is a better coverage rate!
+```{r, fig.width = 6}
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_h3", y = "Observed diff_wis_h3",
+       title = "Observed vs Predicted with 95% Prediction Intervals", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal()
+```
+
+# LASSO
 ## Theoretical background
 ## Implementation
+```{r}
+library(glmnet)
+```
+
+```{r}
+# full predictor matrix and outcome
+X_all = model.matrix(diff_wis_h3 ~ pop_ratio + pct_urban +
+                       log(density_state) + log(density_hsa),
+                     data = df_season)[, -1]
+y_all = df_season$diff_wis_h3
+
+# 80% training for bootstrapping
+set.seed(123)
+n = nrow(X_all)
+train_idx = sample(seq_len(n), size = floor(0.8 * n))
+X_train = X_all[train_idx, , drop = FALSE]
+y_train = y_all[train_idx]
+
+# predict for all 173 observations
+X_test_full = X_all
+
+# fit LASSO with CV to select lambda
+cv_lasso = cv.glmnet(x = X_train, y = y_train, alpha = 1, nfolds = 10)
+lasso_lambda = cv_lasso$lambda.min
+
+# bootstrap
+B = 200
+preds_boot = matrix(NA, nrow = nrow(X_test_full), ncol = B)
+set.seed(1)
+
+for (b in 1:B) {
+  idx = sample(seq_len(nrow(X_train)), replace = TRUE)
+  fit_b = glmnet(x = X_train[idx, , drop = FALSE],
+                 y = y_train[idx],
+                 alpha = 1,
+                 lambda = lasso_lambda)
+  preds_boot[, b] = predict(fit_b, newx = X_test_full, s = lasso_lambda)[,1]
+}
+
+# 95% prediction intervals
+ci_low  = apply(preds_boot, 1, quantile, probs = 0.025)
+ci_high = apply(preds_boot, 1, quantile, probs = 0.975)
+
+# median point estimate across bootstraps
+pred_median = apply(preds_boot, 1, median)
+
+# combine into a data frame
+lasso_predictions = data.frame(
+  observed = y_all,
+  estimate = pred_median,
+  ci_low = ci_low,
+  ci_high = ci_high
+)
+
+coverage_95_lasso = mean(
+  lasso_predictions$observed >= lasso_predictions$ci_low &
+  lasso_predictions$observed <= lasso_predictions$ci_high,
+  na.rm = TRUE
+)
+```
+
+### Feature importance
+Looks like it ignores two of the variables??? Interesting choice but okay.
+```{r, fig.width= 6}
+lasso_coef = coef(cv_lasso, s = "lambda.min")  # already fitted with CV
+lasso_coefs_df = data.frame(
+  variable = rownames(lasso_coef)[-1],   # drop intercept
+  coef     = as.numeric(lasso_coef[-1])
+)
+
+lasso_coefs_df$importance = abs(lasso_coefs_df$coef)
+
+ggplot(lasso_coefs_df) + geom_col(aes(x = reorder(variable, -importance), y = importance), fill='skyblue', col='black') + labs(x = "Variable", y = "Importance", title = "LASSO Variables by Importance")
+```
+
+### Predictions
+Yikes, all over the place fr. Not looking good for LASSO.
+```{r, fig.width = 6}
+ggplot(lasso_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_h3", y = "Observed diff_wis_h3",
+       title = "Observed vs Predicted with 95% Prediction Intervals", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_lasso, nrow(bart_predictions))) +
+  theme_minimal()
+```
+
 
 # Conclusion
 
