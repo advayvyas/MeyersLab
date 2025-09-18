@@ -15,7 +15,7 @@ knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "center", warning=F
 
 ------------------------------------------------------------------------
 
-```{r, results='hide', warning=FALSE, message=FALSE}
+```{r, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
 library(dplyr)
 library(tidyverse)
 library(ggplot2)
@@ -36,6 +36,7 @@ library(GGally)
 This week, I plan to use the methods I mentioned last week to estimate the WIS differences. I'll process and prepare the data and then apply several models to try and see which work best. 
 
 # Data processing
+I should have looked at this more but I really didn't. It looks cool though! Off the top of my head, I see that pct_urban and pop_ratio seem to be the more correlated with other variables. Especially for diff_wis_h3, those are the first two that pop out from that row quite prominently (foreshadowing).
 ```{r, fig.height = 6, fig.width = 6}
 df <- readr::read_csv("GBQR_diff_wis.csv", show_col_types = FALSE)
 
@@ -50,6 +51,8 @@ corrplot(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, type =
 
 # Support Vector Regression (SVR)
 ## Theoretical background
+This model basically attempts to bring the benefits of support vector machines to regression. It fits a function within a margin of tolerance and can capture complex nonlinear relationships. It is also inherently regularized by its cost and penalty attributes.
+
 ## Implementation
 ```{r}
 library(e1071)
@@ -74,7 +77,7 @@ svr_coefs_df = svr_coefs_df[order(-svr_coefs_df$importance), ]
 
 ggplot(svr_coefs_df) + geom_col(aes(x = reorder(variable, -importance), y = importance), fill='skyblue', col='black') + labs(x = "Variable", y = "Importance", title = "SVR Variables by Importance")
 ```
-
+For SVR, it looks like pct_urban is the most important variable followed by the density of the hsa, then the pop ratio and the density of the state.
 
 ### Predictions
 ```{r}
@@ -110,6 +113,7 @@ coverage_95_svr = mean(
 )
 ```
 
+This is a decent coverage level. While it is less than GAM, I think this approach has potential with some hyperparameter tuning and tweaks to how the model is applied. Right now, it is a very basic setup so it could improve. Still iffy on this one in the future.
 ```{r, fig.width = 6}
 ggplot(svr_predictions, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
@@ -122,8 +126,7 @@ ggplot(svr_predictions, aes(x = estimate, y = observed)) +
 ```
 
 
-
-# Bayesian Additive Regression Trees
+# Bayesian Additive Regression Trees (BART)
 ## Theoretical background
 This model is able to use multiple trees to spread out complex predictors and effects. It also has in-built feature importance and natively returns confidence intervals, which is really useful. 
 
@@ -152,9 +155,10 @@ bart_vi = as.data.frame(bart_fit$varcount) %>%
 ggplot(bart_vi) + geom_col(aes(x = reorder(variable, -avg), y = avg), fill='skyblue', col='black') + labs(x = "Variable", y = "Importance", title = "BART Variables by Importance")
 
 ```
+Similar to SVR, pct_urban and the densities are important. However, what is interesting is that this method is the only method for which native feature importance is supported and they all seem equal. It also performs the best.
 
 ### Predictions
-Comparing to the GAM graph, about 10% more of the predictions are within the 95% confidence interval, which I think is a good sign for this route of modeling/training/fitting.
+Comparing to the GAM graph, about 10% more of the predictions are within the 95% confidence interval, which I think is a good sign for this route of modeling/training/fitting. This may be due to this model creating outputs in confidence interval, but this is a net positive for us. 
 ```{r}
 pred = predict(bart_fit, newdata = df_season)
 bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
@@ -184,6 +188,8 @@ ggplot(bart_predictions, aes(x = estimate, y = observed)) +
 
 # LASSO
 ## Theoretical background
+LASSO is basically linear regression that also penalizes large coefficients and performs automatic variable selection. More useful with many predictors or noisy/irrelvant predictors $\Rightarrow$ not really our case right now.
+
 ## Implementation
 ```{r}
 library(glmnet)
@@ -247,7 +253,7 @@ coverage_95_lasso = mean(
 ```
 
 ### Feature importance
-Looks like it ignores two of the variables??? Interesting choice but okay.
+Looks like it ignores two of the variables??? Interesting choice but okay. This must be the LASSO shrinking unimportant variables to 0. Interestingly enough, it also chose pct_urban as the most important followed up by a surprising pop_ratio.
 ```{r, fig.width= 6}
 lasso_coef = coef(cv_lasso, s = "lambda.min")  # already fitted with CV
 lasso_coefs_df = data.frame(
@@ -261,7 +267,7 @@ ggplot(lasso_coefs_df) + geom_col(aes(x = reorder(variable, -importance), y = im
 ```
 
 ### Predictions
-Yikes, all over the place fr. Not looking good for LASSO.
+Yikes, all over the place fr. Not looking good for LASSO. I don't like this at all.
 ```{r, fig.width = 6}
 ggplot(lasso_predictions, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
@@ -275,4 +281,4 @@ ggplot(lasso_predictions, aes(x = estimate, y = observed)) +
 
 
 # Conclusion
-
+I think BART and SVR look the most promising out of these three models, with BART for sure the best right now. I also need to look into bootstrapping the coefficients for feature importance on SVR and LASSO but I kind of ran out of time. I also want to look at elastic net and ridge instead of LASSO from glmnet and see how they differ or improve if at all. I also was unable to understand the US map code to project it onto a map, I want to make those next week or a bit later to see how that works with mine and easily compare. Lastly, I might look into using more variables to accurately predict how well the model will perform.
