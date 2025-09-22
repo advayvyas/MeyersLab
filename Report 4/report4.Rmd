@@ -1,0 +1,48 @@
+---
+title: "Report 4"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "center", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(corrplot)
+library(mosaic)
+library(moderndive)
+library(effectsize)
+library(tidyr)
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+```
+
+# Introduction
+This week, I plan to investigate Bayesian additive regression trees in more detail through methods like hyperparamter tuning, a further deep dive into the literature surrounding the ML method, and improving data preprocessing and data collection. 
+
+# Data preprocessing
+
+# Implementation
+
+# Variable importance with SHARP
+
+# US map generation
+
+# Literature review
+
+# Conclusion
