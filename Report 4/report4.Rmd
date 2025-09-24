@@ -30,15 +30,69 @@ library(caret)
 library(purrr)
 library(fastDummies)
 library(GGally)
+library(dbarts)
 ```
 
 # Introduction
 This week, I plan to investigate Bayesian additive regression trees in more detail through methods like hyperparamter tuning, a further deep dive into the literature surrounding the ML method, and improving data preprocessing and data collection. 
 
 # Data preprocessing
+```{r, fig.height = 5, fig.width = 8}
+df_new = read_csv("forecasting_metrics_overall.csv", show_col_types = FALSE)
+
+df_new = df_new %>% 
+  filter(season == "2023/24", horizon == 3) %>%
+  distinct() %>% select(-included, -week_end_hsa, -week_end_state, -population_hsa, -season_week_hsa, -inc_hsa, 
+                        -season_week_state, -inc_state)
+
+cor_matrix = cor(df_new[, 5:ncol(df_new)])
+# corrplot.mixed(cor_matrix, tl.col = "black", tl.pos = "lt", addgrid.col = TRUE, upper="color", lower="number", diag="l")
+corrplot(cor_matrix, tl.col = "black", tl.pos = "l", addgrid.col = TRUE, type = "upper", method = "ellipse", diag = TRUE)
+```
+
+```{r}
+
+
+
+```
 
 # Implementation
+```{r}
+bart_fit = bart(
+  x.train = df_new[, c("pop_ratio","pct_urban",
+                          "density_state","density_hsa")],
+  y.train = df_new$diff_wis_season,
+  verbose = FALSE, keeptrees = TRUE
+)
+```
 
+## Predictions
+```{r}
+pred = predict(bart_fit, newdata = df_new)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+bart_predictions$observed = df_new$diff_wis_season
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r, fig.width = 6}
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_h3", y = "Observed diff_wis_h3",
+       title = "Observed vs Predicted with 95% Prediction Intervals", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal()
+```
+advanced cns fellowship
 # Variable importance with SHARP
 
 # US map generation
