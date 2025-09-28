@@ -1,0 +1,63 @@
+---
+title: "Report 4"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "center", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(data.table)
+library(ggplot2)
+library(tigris)
+library(stringr)
+library(sf)
+library(lubridate)
+library(patchwork)
+library(corrplot)
+library(mosaic)
+library(moderndive)
+library(effectsize)
+library(tidyr)
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+library(dbarts)
+library(iml)
+```
+
+# Introduction
+This week, I plan to improve predictions with the number of HSAs, adding season vs overall predictions, redoing the US map to include predictions even when I only have the main four predictors for BARRT
+
+# Data processing
+```{r}
+overall = read.csv("../forecasting_metrics_overall.csv")
+pop_desc = read.csv("../us_hsa_county_popdesc.csv")
+```
+
+# Predictions 
+
+## Adding number of HSAs
+## Season vs. overall prediction
+
+# US map again
+
+# SHAP again
+
+# Theoretical background of BART
+
+
+
+
