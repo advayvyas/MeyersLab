@@ -189,6 +189,7 @@ fig_old = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
 
 fig_old / fig_szn / fig_overall
 ```
+
 # US map (again)
 ```{r map_data, cache=TRUE}
 us_map = readRDS("../us_map_pop_sf.rds")
@@ -263,7 +264,7 @@ in_data_map = ggplot() +
           fill = NA, color = 'gray20') +
   geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map1), "geometry"),
           fill = NA, color = "grey20", linewidth = 0.25) +
-  scale_fill_viridis_c(option = "magma", direction = 1, na.value = "white",
+  scale_fill_viridis_c(option = "magma", direction = -1, na.value = "white",
                        name = "diff wis season") + 
   coord_sf() + theme_void() +
   labs(title = "diff wis season")
@@ -279,7 +280,7 @@ predicted_map = ggplot() +
           fill = NA, color = 'gray20') +
   geom_sf(data = unavail_hsa,
           fill = NA, color = "red", linewidth = 0.5) +
-  scale_fill_viridis_c(option = "magma", direction = 1, na.value = "white",
+  scale_fill_viridis_c(option = "magma", direction = -1, na.value = "white",
                        name = "Prediction", 
                        limits = c(min(df_pred$diff_wis_season, na.rm = TRUE),
                                   max(df_pred$diff_wis_season, na.rm = TRUE))) +
@@ -288,7 +289,7 @@ predicted_map = ggplot() +
 ```
 
 These predicted graphs don't get to use n_hsa or the areas of HSA or state but every other variable is available. 
-```{r us_map_graphs, cache=TRUE, fig.height = 10, fig.width = 10}
+```{r us_map_graphs, cache=FALSE, fig.height = 10, fig.width = 10}
 hsa_included_map / in_data_map / predicted_map
 
 ```
@@ -441,7 +442,7 @@ summary(lm(diff_wis_overall ~ state +  pop_ratio + pct_urban + population_state 
 ```
 
 # Theoretical background of BART
-I'm just reading through [https://arxiv.org/pdf/0806.3286](this paper) and taking notes to better understand what BART actually is.
+I'm just reading through [this paper](https://arxiv.org/pdf/0806.3286) and taking notes to better understand what BART actually is.
 
 Okay, the symbols and stuff got very confusing but I basically understand that it approximates $Y = f(x) + \epsilon$, where $\epsilon$ is noise, with a certain number of regression trees. Mainly reading the introduction here, this sum-of-trees is model is an "additive model with multivariate components". Boosting fits a sequence of trees, bagging/random forests use randomization to create independent trees. On the other hand, BART uses a sum of trees by imposing a prior that regularizes the fit by keeping the tree effects small. To fit the model, BART uses MCMC to construct and fit residuals. This model gives out distributions instead of point-wise results. I read a bit more about priors and MCMC being a random walk through a posterior distribution and this makes a lot more sense now. Yay!
 
