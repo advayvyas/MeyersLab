@@ -1,5 +1,5 @@
 ---
-title: "Report 4"
+title: "Report 5"
 author: "Advay Vyas"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
@@ -78,7 +78,7 @@ pred_old = predict(bart_fit, newdata = df_var)
 bart_predictions = as.data.frame(t(apply(pred_old, 2, quantile, probs = c(0.025, 0.975))))
 colnames(bart_predictions) = c("ci_low", "ci_high")
 
-bart_predictions$estimate = (bart_predictions$ci_low + bart_predictions$ci_high) / 2
+bart_predictions$estimate = apply(pred_old, 2, mean) 
 bart_predictions$observed = df_var$diff_wis_season
 
 coverage_95_bart = mean(
@@ -109,7 +109,7 @@ pred_szn = predict(bart_fit_szn, newdata = df_var)
 bart_predictions_szn = as.data.frame(t(apply(pred_szn, 2, quantile, probs = c(0.025, 0.975))))
 colnames(bart_predictions_szn) = c("ci_low", "ci_high")
 
-bart_predictions_szn$estimate = (bart_predictions_szn$ci_low + bart_predictions_szn$ci_high) / 2
+bart_predictions_szn$estimate = apply(pred_szn, 2, mean) 
 bart_predictions_szn$observed = df_var$diff_wis_season
 
 coverage_95_bart_szn = mean(
@@ -137,7 +137,7 @@ pred_overall = predict(bart_fit_overall, newdata = df_var)
 bart_predictions_overall = as.data.frame(t(apply(pred_overall, 2, quantile, probs = c(0.025, 0.975))))
 colnames(bart_predictions_overall) = c("ci_low", "ci_high")
 
-bart_predictions_overall$estimate = (bart_predictions_overall$ci_low + bart_predictions_overall$ci_high) / 2
+bart_predictions_overall$estimate = apply(pred_overall, 2, mean) 
 bart_predictions_overall$observed = df_var$diff_wis_season
 
 coverage_95_bart_overall = mean(
@@ -158,6 +158,7 @@ var_old = ggplot(bart_vi) + geom_col(aes(y = reorder(variable, avg), x = avg), f
 
 var_old / var_szn / var_overall
 ```
+
 ```{r graphs, fig.width = 8, fig.height = 8, warning = FALSE, message= FALSE}
 fig_szn = ggplot(bart_predictions_szn, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
@@ -377,8 +378,60 @@ ggplot(global_imp_overall, aes(x = reorder(feature, mean_abs_phi), y = mean_abs_
 ```
 
 # Mixed/random effects with BART
+I'm doing season only for this one, I'll see if it makes it better before comparing both methods.
+```{r rbart}
+rbart_fit_szn = rbart_vi(
+  formula = diff_wis_season ~ pop_ratio + pct_urban + population_state + 
+                              density_state + density_hsa + n_hsa + 
+                              area_km2_hsa + area_km2_state,
+  data = df_var,
+  group.by = df_var$state,   # random intercept per state
+  verbose = FALSE,
+  keepTrees = TRUE
+)
+
+rpred_szn = predict(rbart_fit_szn, newdata = df_var, group.by = df_var$state,, type = "ev")   # expected value = f(x) + ranef
+
+rbart_predictions_szn = as.data.frame(t(apply(rpred_szn, 2, quantile, probs = c(0.025, 0.975))))
+colnames(rbart_predictions_szn) = c("ci_low", "ci_high")
+
+rbart_predictions_szn$estimate = apply(rpred_szn, 2, mean) 
+rbart_predictions_szn$observed = df_var$diff_wis_season
+
+rcoverage_95_bart_szn = mean(
+  rbart_predictions_szn$observed >= rbart_predictions_szn$ci_low &
+  rbart_predictions_szn$observed <= rbart_predictions_szn$ci_high,
+  na.rm = TRUE
+)
+
+```
+
+```{r rbart_features, fig.width = 10, fig.height= 5}
+rbart_vi_szn = as.data.frame(rbart_fit_szn$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+ggplot(rbart_vi_szn) + geom_col(aes(y = reorder(variable, avg), x = avg), fill='skyblue', col='black') + labs(y = "Feature", x = "Importance", title = "Feature importance (in-built, season)") + coord_cartesian(xlim = c(0, 70))
+```
+
+```{r rbart_graph}
+ggplot(rbart_predictions_szn, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*rcoverage_95_bart_szn, nrow(rbart_predictions_szn))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+
+```
 
 # Theoretical background of BART
+I'm just reading through [https://arxiv.org/pdf/0806.3286](this paper) and taking notes to better understand what BART actually is.
+
+
 
 
 
