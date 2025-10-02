@@ -435,15 +435,15 @@ I do NOT know what this means. This is very scary.
 ```{r rbart_output, fig.width = 7, fig.height= 6}
 mixed_features / mixed_graph
 ```
-Now, I realize that I should have checked for differences between states before trying this out and having it fail spectacularly. Well, looks like Texas and maybe North Carolina are special cases that need to be dealt with seperately.
+Now, I realize that I should have checked for differences between states before trying this out and having it fail spectacularly. Well, looks like Texas and maybe North Carolina are special cases that need to be dealt with separately.
 ```{r}
-summary(lm(diff_wis_overall ~ state +  pop_ratio + pct_urban + population_state + 
-                              density_state + density_hsa + n_hsa + 
-                              area_km2_hsa + area_km2_state, data = df_var))
+summary(lm(diff_wis_overall ~ state +  pop_ratio + pct_urban + population_state + density_state + density_hsa + n_hsa + area_km2_hsa + area_km2_state, data = df_var))
 ```
 
 # Theoretical background of BART
 I'm just reading through [https://arxiv.org/pdf/0806.3286](this paper) and taking notes to better understand what BART actually is.
+
+Okay, the symbols and stuff got very confusing but I basically understand that it approximates $Y = f(x) + \epsilon$, where $\epsilon$ is noise, with a certain number of regression trees. Mainly reading the introduction here, this sum-of-trees is model is an "additive model with multivariate components". Boosting fits a sequence of trees, bagging/random forests use randomization to create independent trees. On the other hand, BART uses a sum of trees by imposing a prior that regularizes the fit by keeping the tree effects small. To fit the model, BART uses MCMC to construct and fit residuals. This model gives out distributions instead of point-wise results. I read a bit more about priors and MCMC being a random walk through a posterior distribution and this makes a lot more sense now. Yay!
 
 
 
