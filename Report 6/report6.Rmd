@@ -1,0 +1,214 @@
+---
+title: "Report 6"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(data.table)
+library(brms)
+library(ggplot2)
+library(tigris)
+library(stringr)
+library(sf)
+library(lubridate)
+library(patchwork)
+library(corrplot)
+library(mosaic)
+library(moderndive)
+library(effectsize)
+library(tidyr)
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+library(formatR)
+library(lme4)
+library(dbarts)
+library(iml)
+```
+
+# Introduction
+This week, I am exploring new models to utilize (gaussian processes, random effects, bayesian neural networks) and reading up on the BART literature (the paper Dr. Kim gave me). 
+
+# Data processing
+```{r process}
+overall2 = read.csv("../forecasting_metrics_overall.csv")
+pop_desc = read.csv("../us_hsa_county_popdesc.csv")
+
+us_hsa_county_popdesc_bygroup <- pop_desc %>%
+  select(state, hsa_nci_id, area_km2_hsa, area_km2_state, n_hsa) %>% 
+  distinct()
+
+overall <- overall2 %>%
+  left_join(us_hsa_county_popdesc_bygroup, by = c("state", "hsa_nci_id"))
+
+df_var <- overall %>% 
+  filter(season == "2023/24", horizon == 3) %>%
+  distinct()
+```
+
+# Random effects
+```{r rand_fit}
+re_fit <- lmer(diff_wis_season ~ 1 + pop_ratio + pct_urban + population_state + density_state + density_hsa + n_hsa + area_km2_hsa + area_km2_state + (1 | state), data = df_var)
+df_var$u_hat <- ranef(re_fit)$state[as.character(df_var$state), "(Intercept)"]
+
+bart_fit = bart(
+  x.train = df_var[, c("pop_ratio","pct_urban","population_state","density_state",
+          "density_hsa","n_hsa","area_km2_hsa","area_km2_state")],
+  y.train = df_var$diff_wis_season - df_var$u_hat,
+  verbose = FALSE, keeptrees = TRUE)
+
+bart_vi = as.data.frame(bart_fit$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+pred = predict(bart_fit, newdata = df_var)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+bart_predictions$observed = df_var$diff_wis_season
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r random_plots, fig.width = 10, fig.height=8}
+ggplot(bart_vi) + geom_col(aes(y = reorder(variable, avg), x = avg), fill='skyblue', col='black') + labs(y = "Feature", x = "Importance", title = "Feature importance (in-built, season)") + coord_cartesian(xlim = c(0, 70))
+
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (mixed effects)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+# Gaussian Processes
+```{r gp_fit, cache=TRUE}
+gp_fit <- brm(
+  formula = diff_wis_season ~ gp(pop_ratio, pct_urban, population_state,
+                                 density_state, density_hsa, n_hsa,
+                                 area_km2_hsa, area_km2_state),
+  data = df_var,
+  family = gaussian(),
+  chains = 4, cores = 4, iter = 2000,
+  backend = "rstan"   
+)
+```
+
+```{r gp_details, message=FALSE, warning=FALSE, fig.width = 10, fig.width = 7}
+plot(gp_fit)
+pp_check(gp_fit)
+```
+
+```{r gp_predicting, cache=TRUE}
+fitted_vals = fitted(gp_fit)
+pred_vals = predict(gp_fit)
+```
+
+```{r gp_vars}
+gp_predictions = data.frame (
+  estimate = fitted_vals[, "Estimate"],
+  ci_low  = fitted_vals[, "Q2.5"],
+  ci_high = fitted_vals[, "Q97.5"],
+  observed = df_var$diff_wis_season
+)
+
+coverage_95_gp <- mean(
+  gp_predictions$observed >= gp_predictions$ci_low &
+  gp_predictions$observed <= gp_predictions$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r gp_plot, fig.width = 10, fig.height=8}
+ggplot(gp_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (GP)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_gp, nrow(gp_predictions))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+# Bayesian Neural Networks
+This will take a lot longer to compile so I'll compile later this week and update if it gives good results by committing to the GitHub.
+```{r}
+# install.packages("greta")
+# library(greta)
+# 
+# X <- as_data(as.matrix(df_var[, c("pop_ratio","pct_urban","population_state",
+#                                   "density_state","density_hsa","n_hsa",
+#                                   "area_km2_hsa","area_km2_state")]))
+# y <- as_data(df_var$diff_wis_season)
+# 
+# n_input <- ncol(X)
+# n_hidden <- 10
+# 
+# W1 <- normal(0, 1, dim = c(n_input, n_hidden))
+# b1 <- normal(0, 1, dim = c(1, n_hidden))
+# W2 <- normal(0, 1, dim = c(n_hidden, 1))
+# b2 <- normal(0, 1)
+# 
+# 
+# h <- tanh(X %*% W1 + b1)
+# mu <- h %*% W2 + b2
+# 
+# sigma <- lognormal(0, 1) 
+# distribution(y) <- normal(mu, sigma)
+# 
+# bnn_model <- model(W1, b1, W2, b2, sigma)
+# draws <- mcmc(bnn_model, n_samples = 1000, warmup = 500, chains = 4)
+# 
+# posterior_means <- calculate(mu, values = draws)
+# pred_mean <- apply(posterior_means[[1]], 1, mean)
+# pred_ci <- t(apply(posterior_means[[1]], 1, quantile, c(0.025, 0.975)))
+# 
+# bnn_summary <- data.frame(
+#   estimate = pred_mean,
+#   ci_low = pred_ci[, 1],
+#   ci_high = pred_ci[, 2],
+#   observed = df_var$diff_wis_season
+# )
+# 
+# coverage_95_bnn <- mean(
+#   bnn_summary$observed >= bnn_summary$ci_low &
+#   bnn_summary$observed <= bnn_summary$ci_high,
+#   na.rm = TRUE
+# )
+```
+
+```{r}
+# ggplot(bnn_summary, aes(x = estimate, y = observed)) +
+  # geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  # geom_point(alpha = 0.7) +
+  # geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  # labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+  #      title = "Observed vs Predicted with 95% Prediction Intervals (BNN)", 
+  #      subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bnn, nrow(bnn_summary))) +
+  # theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
