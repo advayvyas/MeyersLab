@@ -268,6 +268,7 @@ soc = ggplot(bart_predictions_soc, aes(x = estimate, y = observed)) +
 
 std / soc
 ```
+
 # SHAP feature importance 
 ## Standard
 ```{r shap_std, cache=TRUE}
