@@ -156,59 +156,69 @@ ggplot(gp_predictions, aes(x = estimate, y = observed)) +
 
 # Bayesian Neural Networks
 This will take a lot longer to compile so I'll compile later this week and update if it gives good results by committing to the GitHub.
-```{r}
-# install.packages("greta")
-# library(greta)
-# 
-# X <- as_data(as.matrix(df_var[, c("pop_ratio","pct_urban","population_state",
-#                                   "density_state","density_hsa","n_hsa",
-#                                   "area_km2_hsa","area_km2_state")]))
-# y <- as_data(df_var$diff_wis_season)
-# 
-# n_input <- ncol(X)
-# n_hidden <- 10
-# 
-# W1 <- normal(0, 1, dim = c(n_input, n_hidden))
-# b1 <- normal(0, 1, dim = c(1, n_hidden))
-# W2 <- normal(0, 1, dim = c(n_hidden, 1))
-# b2 <- normal(0, 1)
-# 
-# 
-# h <- tanh(X %*% W1 + b1)
-# mu <- h %*% W2 + b2
-# 
-# sigma <- lognormal(0, 1) 
-# distribution(y) <- normal(mu, sigma)
-# 
-# bnn_model <- model(W1, b1, W2, b2, sigma)
-# draws <- mcmc(bnn_model, n_samples = 1000, warmup = 500, chains = 4)
-# 
-# posterior_means <- calculate(mu, values = draws)
-# pred_mean <- apply(posterior_means[[1]], 1, mean)
-# pred_ci <- t(apply(posterior_means[[1]], 1, quantile, c(0.025, 0.975)))
-# 
-# bnn_summary <- data.frame(
-#   estimate = pred_mean,
-#   ci_low = pred_ci[, 1],
-#   ci_high = pred_ci[, 2],
-#   observed = df_var$diff_wis_season
-# )
-# 
-# coverage_95_bnn <- mean(
-#   bnn_summary$observed >= bnn_summary$ci_low &
-#   bnn_summary$observed <= bnn_summary$ci_high,
-#   na.rm = TRUE
-# )
+```{r bnn, cache=TRUE}
+library(greta)
+
+# Data
+X <- as_data(as.matrix(df_var[, c("pop_ratio","pct_urban","population_state",
+                                  "density_state","density_hsa","n_hsa",
+                                  "area_km2_hsa","area_km2_state")]))
+y <- as_data(df_var$diff_wis_season)
+
+n_input <- ncol(X)
+n_hidden <- 10
+n_obs <- nrow(df_var)
+
+# Parameters
+W1 <- normal(0, 1, dim = c(n_input, n_hidden))
+b1 <- normal(0, 1, dim = c(1, n_hidden))
+W2 <- normal(0, 1, dim = c(n_hidden, 1))
+b2 <- normal(0, 1)
+
+# Neural network layers
+# Explicitly replicate b1 and b2 for broadcasting
+h <- tanh(X %*% W1 + b1[rep(1, n_obs), ])
+mu <- h %*% W2 + b2[rep(1, n_obs), ]
+
+# Observation model
+sigma <- lognormal(0, 1)
+distribution(y) <- normal(mu, sigma)
+
+# Build and sample
+bnn_model <- model(W1, b1, W2, b2, sigma)
+draws <- mcmc(bnn_model, n_samples = 1000, warmup = 500, chains = 4)
+posterior_means <- calculate(mu, values = draws)[[1]] # 1000 × 173
+
+# Compute per-observation mean
+pred_mean <- apply(posterior_means, 2, mean)      # length 173
+# Compute 95% credible intervals per observation
+pred_ci <- apply(posterior_means, 2, quantile, c(0.025, 0.975)) # 2 × 173
+pred_ci <- t(pred_ci)  # transpose to 173 × 2
+
+# Build summary
+bnn_summary <- data.frame(
+  estimate = pred_mean,
+  ci_low  = pred_ci[,1],
+  ci_high = pred_ci[,2],
+  observed = df_var$diff_wis_season
+)
+
+coverage_95_bnn <- mean(
+  bnn_summary$observed >= bnn_summary$ci_low &
+  bnn_summary$observed <= bnn_summary$ci_high,
+  na.rm = TRUE
+)
+
 ```
 
-```{r}
-# ggplot(bnn_summary, aes(x = estimate, y = observed)) +
-  # geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
-  # geom_point(alpha = 0.7) +
-  # geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
-  # labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
-  #      title = "Observed vs Predicted with 95% Prediction Intervals (BNN)", 
-  #      subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bnn, nrow(bnn_summary))) +
-  # theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```{r bnn_plot, fig.width = 10, fig.height=8}
+ggplot(bnn_summary, aes(x = estimate, y = observed)) +
+geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+geom_point(alpha = 0.7) +
+geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+     title = "Observed vs Predicted with 95% Prediction Intervals (BNN)",
+     subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bnn, nrow(bnn_summary))) +
+theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
 
