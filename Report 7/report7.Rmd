@@ -1,0 +1,351 @@
+---
+title: "Report 6"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(patchwork)
+library(mosaic)
+library(tidyr)
+library(formatR)
+
+library(data.table)
+library(tidycensus)
+library(dbarts)
+library(iml)
+```
+
+# Introduction
+This week, we are going to introduce new socioeconomic variables 
+
+# Data processing
+```{r}
+v23 = load_variables(2023, "acs5", cache = TRUE)
+```
+
+## Education
+```{r}
+education_county = get_acs(geography = "county", variables = c(total = "B15003_001", bachelors = "B15003_021", high_school = "B15003_017"), year = 2023) %>%
+  select(GEOID, NAME, variable, estimate) %>%
+  pivot_wider(names_from = variable, values_from = estimate) %>% mutate (state_ID = as.numeric(GEOID) %/% 1000, high_school_pct = high_school / total)
+
+head(education_county)
+```
+
+I think we choose only high school here because it has way more correlation and people who go to college usually leave their county.
+
+```{r}
+education_county = education_county[,c(1:2, 6:7)]
+```
+
+Now, we get the state-level version.
+```{r}
+education_state = get_acs(geography = "state", variables = c(total = "B15003_001", high_school = "B15003_017"), year = 2023) %>% select(GEOID, NAME, variable, estimate) %>% pivot_wider(names_from = variable, values_from = estimate) %>% mutate (high_school_pct_state = high_school / total)
+```
+
+```{r}
+education_state$state_ID = as.numeric(education_state$GEOID)
+```
+
+```{r}
+education = left_join(education_county, education_state[,c(5:6)], by = "state_ID") %>% mutate(education_diff = high_school_pct_state - high_school_pct) %>% select(GEOID, state_ID, NAME, education_diff)
+
+head(education)
+```
+The difference will be state minus county going forward as well.
+
+## Income
+```{r}
+income_county = get_acs(geography = "county", variable = "B19013_001", year = 2023) %>% select(GEOID, NAME, variable, estimate) %>% mutate(state_ID = as.numeric(GEOID) %/% 1000)
+
+income_state = get_acs(geography = "state", variable = "B19013_001", year = 2023) %>% select(GEOID, NAME, variable, estimate) %>% mutate(state_ID = as.numeric(education_state$GEOID), state_estimate = estimate)
+```
+
+```{r}
+income = left_join(income_county, income_state[,c(5:6)], by = "state_ID") %>% mutate(income_diff = log(state_estimate) - log(estimate)) %>% select(GEOID, state_ID, NAME, income_diff)
+
+head(income)
+```
+
+## Poverty level
+```{r}
+poverty_county = get_acs(geography = "county", variables = c(total = "B17001_001", poverty = "B17001_002"), year = 2023) %>% select(-moe) %>% pivot_wider(names_from = variable, values_from = estimate) %>% mutate (state_ID = as.numeric(GEOID) %/% 1000, poverty_pct = poverty / total)
+
+poverty_state = get_acs(geography = "state", variables = c(total = "B17001_001", poverty = "B17001_002"), year = 2023) %>% select(-moe) %>% pivot_wider(names_from = variable, values_from = estimate) %>% mutate (state_ID = as.numeric(GEOID), poverty_pct_state = poverty / total)
+```
+
+```{r}
+poverty = left_join(poverty_county, poverty_state[,c(5:6)], by = "state_ID") %>% mutate(poverty_diff = poverty_pct_state - poverty_pct) %>% select(GEOID, state_ID, NAME, poverty_diff)
+
+head(poverty)
+```
+
+## Unemployment rate
+```{r}
+unemployment_county = get_acs(geography = "county", variables = c(total = "B23025_003", unemployed = "B23025_005"), year = 2023) %>% select(-moe) %>% pivot_wider(names_from = variable, values_from = estimate) %>% mutate (state_ID = as.numeric(GEOID) %/% 1000, unemployment_pct = unemployed / total)
+
+unemployment_state = get_acs(geography = "state", variables = c(total = "B23025_003", unemployed = "B23025_005"), year = 2023) %>% select(-moe) %>% pivot_wider(names_from = variable, values_from = estimate) %>% mutate (state_ID = as.numeric(GEOID), unemployment_pct_state = unemployed / total)
+```
+
+```{r}
+unemployment = left_join(unemployment_county, unemployment_state[,c(5:6)], by = "state_ID") %>% mutate(unemployment_diff = unemployment_pct_state - unemployment_pct)  %>% select(GEOID, state_ID, NAME, unemployment_diff)
+
+head(unemployment)
+```
+
+## Socioeconomic data
+```{r}
+hsa_list = readxl::read_xls("Health.Service.Areas.xls")
+head(hsa_list)
+```
+
+```{r}
+socioecon = left_join(education, income[,c(1,4)], by = "GEOID") %>% left_join(poverty[,c(1,4)], by = "GEOID") %>% left_join(unemployment[,c(1,4)], by = "GEOID") %>% select(-state_ID)
+
+colnames(hsa_list) = c("hsa_nci_id", "desc", "state-county", "GEOID")
+socioecon = left_join(socioecon, hsa_list[,c(1,4)], by = "GEOID") %>% select(GEOID, hsa_nci_id, education_diff, income_diff, poverty_diff, unemployment_diff, NAME)
+
+head(socioecon)
+```
+```{r}
+write.csv(socioecon, file = "socioecon.csv", row.names = FALSE)
+```
+
+# Training BART
+## Data preprocessing
+```{r}
+overall2 = read.csv("../forecasting_metrics_overall.csv")
+pop_desc = read.csv("../us_hsa_county_popdesc.csv")
+socioecon = read.csv("socioecon.csv") 
+
+us_hsa_county_popdesc_bygroup = pop_desc %>%
+  select(state, hsa_nci_id, area_km2_hsa, area_km2_state, n_hsa) %>% 
+  distinct()
+
+overall = overall2 %>%
+  left_join(us_hsa_county_popdesc_bygroup, by = c("state", "hsa_nci_id"))
+
+df_var = overall %>% 
+  filter(season == "2023/24", horizon == 3) %>%
+  distinct()
+```
+
+```{r}
+df_complete = left_join(df_var, socioecon, by = "hsa_nci_id") %>% mutate(density_ratio = density_hsa / density_state, area_ratio = area_km2_hsa / area_km2_state)
+```
+
+```{r}
+write.csv(df_complete, "../complete_metrics.csv", row.names = FALSE)
+```
+
+Okay, there are two HSAs with missing income diff values and I am dropping them. They just don't have HSA level income values all the way back from the income census data. 
+
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+```
+
+## Training
+### Train and test split
+```{r}
+set.seed(123)
+n = nrow(df_complete)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vars_std = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio")
+
+x.train_std = df_complete[train_idx, vars_std]
+y.train_std = df_complete$diff_wis_season[train_idx]
+
+x.test_std = df_complete[test_idx, vars_std]
+y.test_std = df_complete$diff_wis_season[test_idx]
+
+vars_soc = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff")
+
+x.train_soc = df_complete[train_idx, vars_soc]
+y.train_soc = df_complete$diff_wis_season[train_idx]
+
+x.test_soc = df_complete[test_idx, vars_soc]
+y.test_soc = df_complete$diff_wis_season[test_idx]
+```
+
+```{r bart_fit_std}
+bart_fit_std = bart(
+  x.train = x.train_std,
+  y.train = y.train_std,
+  verbose = FALSE, keeptrees = TRUE)
+
+bart_vi_std = as.data.frame(bart_fit_std$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+pred_std = predict(bart_fit_std, newdata = x.test_std)
+bart_predictions_std = as.data.frame(t(apply(pred_std, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions_std) = c("ci_low", "ci_high")
+
+bart_predictions_std$estimate = apply(pred_std, 2, mean) 
+bart_predictions_std$observed = y.test_std
+
+coverage_95_bart_std = mean(
+  bart_predictions_std$observed >= bart_predictions_std$ci_low &
+  bart_predictions_std$observed <= bart_predictions_std$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r bart_fit_soc}
+bart_fit_soc = bart(
+  x.train = x.train_soc,
+  y.train = y.train_soc,
+  verbose = FALSE, keeptrees = TRUE)
+
+bart_vi_soc = as.data.frame(bart_fit_soc$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+pred_soc = predict(bart_fit_soc, newdata = x.test_soc)
+bart_predictions_soc = as.data.frame(t(apply(pred_soc, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions_soc) = c("ci_low", "ci_high")
+
+bart_predictions_soc$estimate = apply(pred_soc, 2, mean) 
+bart_predictions_soc$observed = y.test_soc
+
+coverage_95_bart_soc = mean(
+  bart_predictions_soc$observed >= bart_predictions_soc$ci_low &
+  bart_predictions_soc$observed <= bart_predictions_soc$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r feature_imp, fig.width = 8, fig.height=6}
+std_feature = ggplot(bart_vi_std) + geom_col(aes(y = reorder(variable, avg), x = avg), fill='skyblue', col='black') + labs(y = "Feature", x = "Importance", title = "Feature importance (in-built, season)") + coord_cartesian(xlim = c(0, 90))
+
+soc_feature = ggplot(bart_vi_soc) + geom_col(aes(y = reorder(variable, avg), x = avg), fill='skyblue', col='black') + labs(y = "Feature", x = "Importance", title = "Feature importance (in-built, socioeconomic, season)") + coord_cartesian(xlim = c(0,90))
+
+std_feature / soc_feature
+```
+
+```{r, fig.width = 8, fig.height = 8}
+std = ggplot(bart_predictions_std, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_std, nrow(bart_predictions_std))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+
+soc = ggplot(bart_predictions_soc, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (socioeconomic, season)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_soc, nrow(bart_predictions_soc))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+
+std / soc
+```
+# SHAP feature importance 
+## Standard
+```{r shap_std, cache=TRUE}
+predictor_std = Predictor$new(
+  model = bart_fit_std,
+  data  = as.data.frame(df_complete[, vars_std]),
+  y     = df_complete$diff_wis_season,
+  predict.function = function(object, newdata) {
+    colMeans(predict(object, newdata = newdata))
+  }
+)
+
+all_shap_std = rbindlist(lapply(1:nrow(df_complete), function(i) {
+  sh = Shapley$new(
+    predictor_std,
+    x.interest = df_complete[i, vars_std],
+    sample.size   = 50 
+  )
+  out = sh$results
+  out$obs = i        
+  out
+}))
+```
+
+```{r std_shap_table}
+global_imp_std = all_shap_std[, .(mean_abs_phi = mean(abs(phi))), by = feature]
+knitr::kable(global_imp_std[order(-mean_abs_phi)], caption = "(Season) Features by importance (descending)")
+```
+
+This graph basically discusses how much "movement" ($|\phi|$) each feature contributes in turning the baseline into the estimate. 
+```{r std_shap_graph, fig.width = 10}
+ggplot(global_imp_std, aes(x = reorder(feature, mean_abs_phi), y = mean_abs_phi)) +
+  geom_col(fill='skyblue', col='black') +
+  coord_flip() +
+  labs(x = "Feature", y = "Mean of absolute value of SHAP",
+       title = "(Season) Global SHAP feature importance")
+
+```
+
+## Socieconomic
+```{r shap_soc, cache=TRUE}
+predictor_soc = Predictor$new(
+  model = bart_fit_soc,
+  data  = as.data.frame(df_complete[, vars_soc]),
+  y     = df_complete$diff_wis_season,
+  predict.function = function(object, newdata) {
+    colMeans(predict(object, newdata = newdata))
+  }
+)
+
+all_shap_soc = rbindlist(lapply(1:nrow(df_complete), function(i) {
+  sh = Shapley$new(
+    predictor_soc,
+    x.interest = df_complete[i, vars_soc],
+    sample.size   = 50 
+  )
+  out = sh$results
+  out$obs = i        
+  out
+}))
+```
+
+```{r soc_shap_table}
+global_imp_soc = all_shap_soc[, .(mean_abs_phi = mean(abs(phi))), by = feature]
+knitr::kable(global_imp_soc[order(-mean_abs_phi)], caption = "(Season, Socioeconomic) Features by importance (descending)")
+```
+
+This graph basically discusses how much "movement" ($|\phi|$) each feature contributes in turning the baseline into the estimate. 
+```{r soc_shap_graph, fig.width = 10}
+ggplot(global_imp_soc, aes(x = reorder(feature, mean_abs_phi), y = mean_abs_phi)) +
+  geom_col(fill='skyblue', col='black') +
+  coord_flip() +
+  labs(x = "Feature", y = "Mean of absolute value of SHAP",
+       title = "(Season, Socioeconomic) Global SHAP feature importance")
+
+```
+
+
+
+
+
