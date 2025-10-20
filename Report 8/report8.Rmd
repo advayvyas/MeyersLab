@@ -1,0 +1,56 @@
+---
+title: "Report 8"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(patchwork)
+library(mosaic)
+library(tidyr)
+library(formatR)
+
+library(data.table)
+library(tidycensus)
+library(dbarts)
+library(iml)
+```
+
+# Introduction
+This week, we are going to introduce new socioeconomic variables 
+
+# Data processing
+## Previous data
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+```
+
+## Weather data
+
+# GLM 
+## Implementation
+## BART comparison
+
+# New metrics
+## $R^2$
+## Error metrics
+## 67\% coverage rate
+
+# US map generation
