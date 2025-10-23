@@ -30,27 +30,239 @@ library(data.table)
 library(tidycensus)
 library(dbarts)
 library(iml)
+
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+library(mgcv) 
 ```
 
 # Introduction
-This week, we are going to introduce new socioeconomic variables 
+This week, we are going to introduce weather data, test GLMs, test new metrics, and generate US maps. 
 
 # Data processing
 ## Previous data
 ```{r}
 df_complete = read.csv("../complete_metrics.csv")
 df_complete = drop_na(df_complete)
+colnames(df_complete)
+```
+```{r}
+set.seed(123)
+n = nrow(df_complete)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vars_std = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio")
+
+x.train_std = df_complete[train_idx, vars_std]
+y.train_std = df_complete$diff_wis_season[train_idx]
+
+x.test_std = df_complete[test_idx, vars_std]
+y.test_std = df_complete$diff_wis_season[test_idx]
+
+vars_soc = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff")
+
+x.train_soc = df_complete[train_idx, vars_soc]
+y.train_soc = df_complete$diff_wis_season[train_idx]
+
+x.test_soc = df_complete[test_idx, vars_soc]
+y.test_soc = df_complete$diff_wis_season[test_idx]
 ```
 
-## Weather data
+# Other Models 
+## GLM
+```{r glm, fig.width = 8, fig.height = 4}
+step_glm <- glm(diff_wis_season~ pop_ratio + pct_urban + density_ratio + n_hsa + area_ratio,
+      data = df_complete,
+      family = gaussian(link = "identity")
+    )
+summary(step_glm)
+#plot(step_glm)
 
-# GLM 
-## Implementation
-## BART comparison
+
+df_fitted_glm <- data.frame(fitted = step_glm$fitted.values, observed = step_glm$y)
+
+cor(df_fitted_glm$fitted, df_fitted_glm$observed, use = "complete.obs")^2
+
+ggplot(df_fitted_glm, aes(x = fitted, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted (glm, season)") +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## GAM
+```{r gam, fig.width = 8, fig.height = 4}
+fit_final <- gam(
+  diff_wis_season ~ pop_ratio + pct_urban + density_ratio + n_hsa + area_ratio,
+  data = df_complete
+)
+summary(fit_final)
+
+gam.check(fit_final)
+
+df_fitted_gam <- data.frame(fitted = fit_final$fitted.values, observed = fit_final$y)
+
+ggplot(df_fitted_gam, aes(x = fitted, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted (gam, season)") +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+
+cor(df_fitted_gam$fitted, df_fitted_gam$observed, use = "complete.obs")^2
+
+df_diag <- data.frame(
+  fitted = fitted(fit_final),
+  residuals = resid(fit_final, type = "deviance"),
+  standardized = resid(fit_final, type = "pearson")
+)
+
+ggplot(df_diag, aes(x = fitted, y = residuals)) +
+  geom_point(alpha = 0.6) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(x = "Fitted values", y = "Deviance residuals")
+
+qqnorm(df_diag$residuals)
+qqline(df_diag$residuals, col = "red")
+```
+
+## BART
+```{r bart, fig.width = 8, fig.height = 4}
+bart_fit_std = bart(
+  x.train = x.train_std,
+  y.train = y.train_std,
+  verbose = FALSE, keeptrees = TRUE)
+
+bart_vi_std = as.data.frame(bart_fit_std$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+pred_std = predict(bart_fit_std, newdata = x.test_std)
+bart_predictions_std = as.data.frame(t(apply(pred_std, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions_std) = c("ci_low", "ci_high")
+
+bart_predictions_std$estimate = apply(pred_std, 2, mean) 
+bart_predictions_std$observed = y.test_std
+
+coverage_95_bart_std = mean(
+  bart_predictions_std$observed >= bart_predictions_std$ci_low &
+  bart_predictions_std$observed <= bart_predictions_std$ci_high,
+  na.rm = TRUE
+)
+
+ggplot(bart_predictions_std, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_std, nrow(bart_predictions_std))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
 
 # New metrics
-## $R^2$
-## Error metrics
-## 67\% coverage rate
+```{r error}
+pred_mean = bart_predictions_std$estimate
+obs = bart_predictions_std$observed
+n = length(obs)
+p = ncol(x.train_std) 
 
-# US map generation
+R2 = 1 - sum((obs - pred_mean)^2) / sum((obs - mean(obs))^2)
+adj_R2 = 1 - (1 - R2) * (n - 1) / (n - p - 1)
+RMSE = sqrt(mean((obs - pred_mean)^2))
+MAE = mean(abs(obs - pred_mean))
+coverage_95 = coverage_95_bart_std
+
+bart_metrics = tibble(
+  R2 = R2,
+  adj_R2 = adj_R2,
+  RMSE = RMSE,
+  MAE = MAE,
+  coverage_95 = coverage_95
+)
+
+knitr::kable(bart_metrics, caption = "Error metrics for BART")
+```
+
+# 97% coverage rate for socioeconomic and regular BART
+```{r bart_fit_soc}
+bart_fit_soc = bart(
+  x.train = x.train_soc,
+  y.train = y.train_soc,
+  verbose = FALSE, keeptrees = TRUE)
+
+bart_vi_soc = as.data.frame(bart_fit_soc$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+pred_soc = predict(bart_fit_soc, newdata = x.test_soc)
+bart_predictions_soc = as.data.frame(t(apply(pred_soc, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions_soc) = c("ci_low", "ci_high")
+
+bart_predictions_soc$estimate = apply(pred_soc, 2, mean) 
+bart_predictions_soc$observed = y.test_soc
+
+coverage_95_bart_soc = mean(
+  bart_predictions_soc$observed >= bart_predictions_soc$ci_low &
+  bart_predictions_soc$observed <= bart_predictions_soc$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r}
+probs = c(0.00135, 0.99865)
+
+bart_predictions_std_97 = as.data.frame(t(apply(pred_std, 2, quantile, probs = probs)))
+colnames(bart_predictions_std_97) = c("ci_low", "ci_high")
+
+bart_predictions_std_97$estimate = apply(pred_std, 2, mean) 
+bart_predictions_std_97$observed = y.test_std
+
+coverage_97_bart_std = mean(
+  bart_predictions_std_97$observed >= bart_predictions_std_97$ci_low &
+  bart_predictions_std_97$observed <= bart_predictions_std_97$ci_high,
+  na.rm = TRUE
+)
+
+bart_predictions_soc_97 = as.data.frame(t(apply(pred_soc, 2, quantile, probs = probs)))
+colnames(bart_predictions_soc_97) = c("ci_low", "ci_high")
+
+bart_predictions_soc_97$estimate = apply(pred_soc, 2, mean) 
+bart_predictions_soc_97$observed = y.test_soc
+
+coverage_97_bart_soc = mean(
+  bart_predictions_soc_97$observed >= bart_predictions_soc_97$ci_low &
+  bart_predictions_soc_97$observed <= bart_predictions_soc_97$ci_high,
+  na.rm = TRUE
+)
+```
+
+```{r, fig.width = 8, fig.height = 8}
+std = ggplot(bart_predictions_std_97, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 99.7% Prediction Intervals (season)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_97_bart_std, nrow(bart_predictions_std))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+
+soc = ggplot(bart_predictions_soc_97, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 99.7% Prediction Intervals (socioeconomic, season)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_97_bart_soc, nrow(bart_predictions_soc))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+
+std / soc
+```
