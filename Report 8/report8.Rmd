@@ -48,6 +48,7 @@ df_complete = read.csv("../complete_metrics.csv")
 df_complete = drop_na(df_complete)
 colnames(df_complete)
 ```
+
 ```{r}
 set.seed(123)
 n = nrow(df_complete)
@@ -131,6 +132,7 @@ qqline(df_diag$residuals, col = "red")
 ```
 
 ## BART
+### Standard
 ```{r bart, fig.width = 8, fig.height = 4}
 bart_fit_std = bart(
   x.train = x.train_std,
@@ -166,7 +168,7 @@ ggplot(bart_predictions_std, aes(x = estimate, y = observed)) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
 
-# New metrics
+### New metrics for standard
 ```{r error}
 pred_mean = bart_predictions_std$estimate
 obs = bart_predictions_std$observed
@@ -190,8 +192,8 @@ bart_metrics = tibble(
 knitr::kable(bart_metrics, caption = "Error metrics for BART")
 ```
 
-# 97% coverage rate for socioeconomic and regular BART
-```{r bart_fit_soc}
+### Socieconomic BART
+```{r bart_fit_soc, fig.width = 8, fig.height = 4}
 bart_fit_soc = bart(
   x.train = x.train_soc,
   y.train = y.train_soc,
@@ -215,8 +217,40 @@ coverage_95_bart_soc = mean(
   bart_predictions_soc$observed <= bart_predictions_soc$ci_high,
   na.rm = TRUE
 )
+
+ggplot(bart_predictions_soc, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_soc, nrow(bart_predictions_soc))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
 
+```{r}
+pred_mean_soc = bart_predictions_soc$estimate
+obs_soc = bart_predictions_soc$observed
+n_soc = length(obs_soc)
+p_soc = ncol(x.train_soc)
+
+R2_soc = 1 - sum((obs_soc - pred_mean_soc)^2) / sum((obs_soc - mean(obs_soc))^2)
+adj_R2_soc = 1 - (1 - R2_soc) * (n_soc - 1) / (n_soc - p_soc - 1)
+RMSE_soc = sqrt(mean((obs_soc - pred_mean_soc)^2))
+MAE_soc = mean(abs(obs_soc - pred_mean_soc))
+
+bart_metrics_soc = tibble(
+  R2 = R2_soc,
+  adj_R2 = adj_R2_soc,
+  RMSE = RMSE_soc,
+  MAE = MAE_soc,
+  coverage_95 = coverage_95_bart_soc
+)
+
+knitr::kable(bart_metrics_soc, caption = "Error metrics for BART (socieconomic)")
+```
+
+### 99.7% intervals for both BART models
 ```{r}
 probs = c(0.00135, 0.99865)
 
@@ -266,3 +300,48 @@ soc = ggplot(bart_predictions_soc_97, aes(x = estimate, y = observed)) +
 
 std / soc
 ```
+
+# Investigating row count mishaps
+Looks like I have 833 rows? I have that amount of observations for some reason. Let me check. Alright, socieconomic had duplicate HSA IDs because counties can share HSA IDs. You can run this after, I saved the data to a new file. 
+
+```{r}
+nrow(df_complete)
+```
+
+```{r}
+overall2 = read.csv("../forecasting_metrics_overall.csv")
+pop_desc = read.csv("../us_hsa_county_popdesc.csv")
+socioecon = read.csv("../Report 7/socioecon.csv") 
+
+us_hsa_county_popdesc_bygroup = pop_desc %>%
+  select(state, hsa_nci_id, area_km2_hsa, area_km2_state, n_hsa) %>% 
+  distinct()
+
+overall = overall2 %>%
+  left_join(us_hsa_county_popdesc_bygroup, by = c("state", "hsa_nci_id"))
+
+df_var = overall %>% 
+  filter(season == "2023/24", horizon == 3) %>%
+  distinct()
+```
+
+```{r}
+socioecon_unique = socioecon %>%
+  group_by(hsa_nci_id) %>%
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
+```
+
+```{r}
+df_complete = left_join(df_var, socioecon_unique, by = "hsa_nci_id") %>% mutate(density_ratio = density_hsa / density_state, area_ratio = area_km2_hsa / area_km2_state)
+```
+
+```{r}
+write.csv(df_complete, "../complete_metrics.csv", row.names = FALSE)
+```
+
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+```
+
+
