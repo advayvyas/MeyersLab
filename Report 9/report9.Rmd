@@ -1,0 +1,250 @@
+---
+title: "Report 9"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(patchwork)
+library(mosaic)
+library(tidyr)
+library(formatR)
+
+library(data.table)
+library(tidycensus)
+library(dbarts)
+library(iml)
+
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+library(mgcv) 
+```
+
+# Introduction
+This week, I tried bootstrapping BART and then configured hyperparameters for BART to achieve very high coverage rates again. (80%+ YAY). Next week, I could work on every single hyperparam combination in GridSearchCV and make a compiled table as well as working on shifting the train/test split percents to see how it does with much less training data and much more training data. Could be interesting to see how more test data could balance out bad predictions or something.
+
+# Data processing
+## Previous data
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+colnames(df_complete)
+```
+
+Same same over here. I fixed in Report 8, the issue with the train/test split not working properly, it was something to do with how socieconomic was stored and since multiple HSAs shared the same county and overlapped and gave extra data values. Yeah.
+```{r}
+set.seed(123)
+n = nrow(df_complete)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vars_std = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio")
+
+x.train_std = df_complete[train_idx, vars_std]
+y.train_std = df_complete$diff_wis_season[train_idx]
+
+x.test_std = df_complete[test_idx, vars_std]
+y.test_std = df_complete$diff_wis_season[test_idx]
+
+vars_soc = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff")
+
+x.train_soc = df_complete[train_idx, vars_soc]
+y.train_soc = df_complete$diff_wis_season[train_idx]
+
+x.test_soc = df_complete[test_idx, vars_soc]
+y.test_soc = df_complete$diff_wis_season[test_idx]
+```
+
+# Bootstrapped BART
+## Standard
+Fair warning, this is terrible. Yikes. Maybe parameter tuning here would help but I don't see why we would even try standard now that we have socioeconomic. 
+```{r, cache = TRUE}
+N = 500  # number of bootstrap samples
+
+n = nrow(x.train_std)
+pred_matrix = matrix(NA, nrow = N, ncol = nrow(x.test_std))
+
+for (b in 1:N) {
+  indices = sample(1:n, n, replace = TRUE)
+  x_boot = x.train_std[indices, , drop = FALSE]
+  y_boot = y.train_std[indices]
+
+  bart_fit_boot = bart(
+    x.train = x_boot,
+    y.train = y_boot,
+    verbose = FALSE, keeptrees = TRUE
+  )
+  
+  pred_boot = predict(bart_fit_boot, newdata = x.test_std)
+  preds = colMeans(pred_boot)
+
+  pred_matrix[b, ] = preds
+}
+```
+
+```{r}
+pred_mean_boot = apply(pred_matrix, 2, mean)
+pred_ci_95 = t(apply(pred_matrix, 2, quantile, probs = c(0.025, 0.975)))
+
+bart_predictions_boot = data.frame(
+  estimate = pred_mean_boot,
+  observed = y.test_std,
+  ci_low = pred_ci_95[, 1],
+  ci_high = pred_ci_95[, 2]
+)
+
+head(bart_predictions_boot)
+```
+
+```{r, fig.width = 8, fig.height = 4}
+coverage_95_bart_boot = mean(
+  bart_predictions_boot$observed >= bart_predictions_boot$ci_low &
+  bart_predictions_boot$observed <= bart_predictions_boot$ci_high,
+  na.rm = TRUE
+)
+
+ggplot(bart_predictions_boot, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (boot, season)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_boot, nrow(bart_predictions_boot))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## Socioeconomic
+The bootstrapped socioeconomic model once again falls short of the regular model but it is able to still outperform the standard non-bootstrapped BART model with a higher coverage rate.
+```{r, cache = TRUE}
+N = 500  # number of bootstrap samples
+
+n = nrow(x.train_soc)
+pred_matrix_soc = matrix(NA, nrow = N, ncol = nrow(x.test_soc))
+
+for (b in 1:N) {
+  indices = sample(1:n, n, replace = TRUE)
+  x_boot = x.train_soc[indices, , drop = FALSE]
+  y_boot = y.train_soc[indices]
+
+  bart_fit_boot = bart(
+    x.train = x_boot,
+    y.train = y_boot,
+    verbose = FALSE, keeptrees = TRUE
+  )
+  
+  pred_boot = predict(bart_fit_boot, newdata = x.test_soc)
+  preds = colMeans(pred_boot)
+
+  pred_matrix_soc[b, ] = preds
+}
+```
+
+```{r}
+pred_mean_boot_soc = apply(pred_matrix_soc, 2, mean)
+pred_ci_95 = t(apply(pred_matrix_soc, 2, quantile, probs = c(0.025, 0.975)))
+
+bart_predictions_boot_soc = data.frame(
+  estimate = pred_mean_boot_soc,
+  observed = y.test_soc,
+  ci_low = pred_ci_95[, 1],
+  ci_high = pred_ci_95[, 2]
+)
+
+head(bart_predictions_boot_soc)
+```
+
+```{r, fig.width = 8, fig.height = 4}
+coverage_95_bart_boot_soc = mean(
+  bart_predictions_boot_soc$observed >= bart_predictions_boot_soc$ci_low &
+  bart_predictions_boot_soc$observed <= bart_predictions_boot_soc$ci_high,
+  na.rm = TRUE
+)
+
+ggplot(bart_predictions_boot_soc, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (boot, season, socieconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_boot_soc, 
+                          nrow(bart_predictions_boot_soc))) + 
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+Looks like it gets worse :( which is unfortunate.
+
+# BART parameter modifications
+Since this version of BART seems to have the highest metrics and the most robust mechanism for predictions, I shall choose this one for more research. 
+```{r bart_fit_soc, fig.width = 8, fig.height = 4}
+bart_fit_soc = bart(
+  x.train = x.train_soc,
+  y.train = y.train_soc,
+  verbose = FALSE, keeptrees = TRUE, 
+  k = 1.5, base = 0.99, power = 1.5)
+
+pred_soc = predict(bart_fit_soc, newdata = x.test_soc)
+bart_predictions_soc = as.data.frame(t(apply(pred_soc, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions_soc) = c("ci_low", "ci_high")
+
+bart_predictions_soc$estimate = apply(pred_soc, 2, mean) 
+bart_predictions_soc$observed = y.test_soc
+
+coverage_95_bart_soc = mean(
+  bart_predictions_soc$observed >= bart_predictions_soc$ci_low &
+  bart_predictions_soc$observed <= bart_predictions_soc$ci_high,
+  na.rm = TRUE
+)
+
+ggplot(bart_predictions_soc, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_soc, nrow(bart_predictions_soc))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+I experimented with some ntree counts, 200 the default is still the best. I think k = 1.5 optimizes the coverage rate while keeping the adjusted $R^2$ and similar metrics staying low. This base/power setup was able to greatly increase coverage rate back to pre-test/train split errors. Looking pretty good with these updates. For reference, the changed parameters are _k = 1.5, base = 0.99, power = 1.5_. 
+
+For my process, I first checked tree counts of 50, 100, 300, and 500 (none were better than the default). I then checked possible k values of k = 1, k = 3, k = 5 and found that a blend between the default and 1 would be nice so I tried k = 1.5 and that was good. Lastly, I checked two combinations of base and power: base = 0.9, power = 2 (shallow trees) and base = 0.99, power = 1.5 (deeper trees). Deeper trees seemed to perform excellently, so I stuck with that. Next week, I could see myself exploring using a set of combinations to check all possible through something like grid search cross-validation but regular trial-and-error seemed to work pretty well. 
+
+These are some advanced statistics for this model in this table. 
+```{r}
+pred_mean_soc = bart_predictions_soc$estimate
+obs_soc = bart_predictions_soc$observed
+n_soc = length(obs_soc)
+p_soc = ncol(x.train_soc)
+
+R2_soc = 1 - sum((obs_soc - pred_mean_soc)^2) / sum((obs_soc - mean(obs_soc))^2)
+adj_R2_soc = 1 - (1 - R2_soc) * (n_soc - 1) / (n_soc - p_soc - 1)
+RMSE_soc = sqrt(mean((obs_soc - pred_mean_soc)^2))
+MAE_soc = mean(abs(obs_soc - pred_mean_soc))
+
+bart_metrics_soc = tibble(
+  R2 = R2_soc,
+  adj_R2 = adj_R2_soc,
+  RMSE = RMSE_soc,
+  MAE = MAE_soc,
+  coverage_95 = coverage_95_bart_soc
+)
+
+knitr::kable(bart_metrics_soc, caption = "Error metrics for BART (socieconomic)")
+```
