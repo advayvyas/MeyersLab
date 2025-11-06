@@ -1,0 +1,340 @@
+---
+title: "Report 10"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(patchwork)
+library(mosaic)
+library(tidyr)
+library(formatR)
+
+library(data.table)
+library(tidycensus)
+library(dbarts)
+library(iml)
+
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+library(mgcv) 
+
+library(xgboost)
+```
+
+# Introduction
+This week, I will be looking at the best combination of parameters for BART, looking at other metrics that explain more about the models instead of just coverage rate, trying this new vaccine data, and testing XGBoost in our current setup. 
+
+# Data preprocessing
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+
+set.seed(777)
+n = nrow(df_complete)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vars = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff")
+
+x.train = df_complete[train_idx, vars]
+y.train = df_complete$diff_wis_season[train_idx]
+
+x.test = df_complete[test_idx, vars]
+y.test = df_complete$diff_wis_season[test_idx]
+```
+
+# Best parameters for BART
+```{r, cache = TRUE}
+param_grid = expand.grid(
+  ntree = c(100, 200, 300),
+  k = c(1, 1.5, 2),
+  power = c(1.5, 2, 2.5),
+  base = c(0.9, 0.95, 0.99)
+)
+
+K = 5
+folds = sample(rep(1:K, length.out = nrow(x.train)))
+coverage_prob = 0.95
+
+cv_metrics = function(params) {
+  rmse_vec = r2_vec = adjr2_vec = cov_vec = numeric(K)
+  
+  for (fold in 1:K) {
+    train_idx = which(folds != fold)
+    test_idx = which(folds == fold)
+    
+    x_tr = x.train[train_idx, ]
+    y_tr = y.train[train_idx]
+    x_te = x.train[test_idx, ]
+    y_te = y.train[test_idx]
+    
+    fit = bart(
+      x.train = x_tr, 
+      y.train = y_tr, 
+      x.test = x_te,
+      ntree = params$ntree,
+      k = params$k,
+      power = params$power,
+      base = params$base, 
+      verbose = FALSE
+    )
+    
+    pred_mean = fit$yhat.test.mean
+    pred_ci = apply(fit$yhat.test, 2, quantile, probs = c((1 - coverage_prob) / 2, 1 - (1 - coverage_prob) / 2))
+    ci_low = pred_ci[1, ]
+    ci_high = pred_ci[2, ]
+
+    rmse = sqrt(mean((y_te - pred_mean)^2))
+    r2 = 1 - sum((y_te - pred_mean)^2) / sum((y_te - mean(y_te))^2)
+    p = ncol(x_tr)
+    n = length(y_te)
+    adjr2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
+    coverage = mean(y_te >= ci_low & y_te <= ci_high)
+    
+    rmse_vec[fold] = rmse
+    r2_vec[fold] = r2
+    adjr2_vec[fold] = adjr2
+    cov_vec[fold] = coverage
+  }
+  
+  tibble(
+    rmse = mean(rmse_vec),
+    r2 = mean(r2_vec),
+    adjr2 = mean(adjr2_vec),
+    coverage = mean(cov_vec)
+  )
+}
+
+results = param_grid %>%
+  rowwise() %>%
+  mutate(metrics = list(cv_metrics(cur_data_all()))) %>%
+  unnest_wider(metrics)
+```
+
+```{r}
+head(results %>% arrange(desc(coverage)), n = 8L)
+```
+```{r}
+results[which.max(results$r2),]
+results[which.max(results$coverage),]
+results[which.max(results$rmse),]
+```
+Basically, the model can give good intervals a lot of the time but can't explain the small variations in HSA differences along the testing data set. Probably just something to do with how this model (which uses some form of MCMC I think) works since one of it's main goals is in-built confidence intervals.
+
+```{r bart_fit_vax, fig.width = 8, fig.height = 4}
+bart_fit = bart(
+  x.train = x.train,
+  y.train = y.train,
+  verbose = FALSE, keeptrees = TRUE, 
+  k = 1, base = 0.99, power = 1.5, ntree = 300)
+
+pred = predict(bart_fit, newdata = x.test)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+bart_predictions$observed = y.test
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+# Vaccine data
+```{r}
+vaccine = read.csv("flu_vaccine_coverage.csv") %>% filter(Geography.Type == "Counties", Season.Survey.Year == "2022") %>% select(Geography, FIPS, Estimate...., X95..CI....)
+
+colnames(vaccine) = c("Geography", "GEOID", "vaccine_estimate", "CI")
+vaccine = vaccine %>% separate(CI, into = c("lowCI", "highCI"), sep = " to ")
+
+vaccine$vaccine_estimate = as.numeric(vaccine$vaccine_estimate)
+
+vaccine_unique = vaccine %>%
+  group_by(GEOID) %>%
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
+```
+
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+
+df_complete = left_join(df_complete, vaccine[,2:3], by = "GEOID")
+table(is.na(df_complete$vaccine_estimate))
+
+df_complete = drop_na(df_complete)
+```
+We're dropping the NAs to see if it has any effect, this becomes a very small dataset though. 
+
+```{r}
+set.seed(777)
+n = nrow(df_complete)
+train_idx = sample(seq_len(n), size = floor(0.4*n)) # 40% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vax_vars = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff", "vaccine_estimate")
+
+x.train_vax = df_complete[train_idx, vax_vars]
+y.train_vax = df_complete$diff_wis_season[train_idx]
+
+x.test_vax = df_complete[test_idx, vax_vars]
+y.test_vax = df_complete$diff_wis_season[test_idx]
+```
+
+```{r, fig.width = 8, fig.height = 4}
+bart_fit_vax = bart(
+  x.train = x.train_vax,
+  y.train = y.train_vax,
+  verbose = FALSE, keeptrees = TRUE)
+
+pred_vax = predict(bart_fit_vax, newdata = x.test_vax)
+bart_predictions_vax = as.data.frame(t(apply(pred_vax, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions_vax) = c("ci_low", "ci_high")
+
+bart_predictions_vax$estimate = apply(pred_vax, 2, mean) 
+bart_predictions_vax$observed = y.test_vax
+
+coverage_95_bart_vax = mean(
+  bart_predictions_vax$observed >= bart_predictions_vax$ci_low &
+  bart_predictions_vax$observed <= bart_predictions_vax$ci_high,
+  na.rm = TRUE
+)
+
+ggplot(bart_predictions_vax, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart_vax, nrow(bart_predictions_vax))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+
+```
+These intervals are insanely wide it is actually crazy. Also, shouldn't these lines actually be horizontal because they are the width of the prediction intervals? Not sure though. Looks like it helps but results are on a small sample size but there is a low train/test split, 40 percent train only.
+
+# XGBoost implementation
+```{r}
+dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
+dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
+
+params = list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = 0.1,
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+set.seed(123)
+xgb_fit = xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 300,
+  watchlist = list(train = dtrain, test = dtest),
+  verbose = 0
+)
+
+pred_mean = predict(xgb_fit, as.matrix(x.test))
+
+n = length(y.test)
+p = ncol(x.train)
+R2 = 1 - sum((y.test - pred_mean)^2) / sum((y.test - mean(y.test))^2)
+adj_R2 = 1 - (1 - R2) * (n - 1) / (n - p - 1)
+RMSE = sqrt(mean((y.test - pred_mean)^2))
+
+cat(sprintf("R² = %.3f, Adjusted R² = %.3f, RMSE = %.3f\n", R2, adj_R2, RMSE))
+```
+
+```{r, fig.width = 8, fig.height = 4}
+xgb_predictions = data.frame(
+  estimate = pred_mean,
+  observed = y.test
+)
+
+ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    subtitle = sprintf("R² = %.2f | Adj. R² = %.2f | RMSE = %.2f", R2, adj_R2, RMSE)
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```
+Okay, now we try with confidence intervals.
+
+```{r, cache = TRUE}
+set.seed(123)
+B = 50
+pred_matrix = replicate(B, {
+  params$subsample = runif(1, 0.7, 0.9)
+  params$colsample_bytree = runif(1, 0.7, 0.9)
+  fit_b = xgb.train(params = params, data = dtrain, nrounds = 300, verbose = 0)
+  predict(fit_b, as.matrix(x.test))
+})
+
+pred_mean = rowMeans(pred_matrix)
+pred_sd = apply(pred_matrix, 1, sd)
+
+ci_low = pred_mean - 1.96 * pred_sd
+ci_high = pred_mean + 1.96 * pred_sd
+```
+
+```{r, fig.width = 8, fig.height = 4}
+xgb_predictions = data.frame(
+  estimate = pred_mean,
+  observed = y.test,
+  ci_low = ci_low,
+  ci_high = ci_high
+)
+
+coverage_95_xgb = mean(xgb_predictions$observed >= xgb_predictions$ci_low &
+                       xgb_predictions$observed <= xgb_predictions$ci_high)
+
+ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic, XGBoost)",
+    subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100 * coverage_95_xgb, nrow(xgb_predictions))
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```

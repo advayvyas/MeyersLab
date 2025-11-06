@@ -122,6 +122,8 @@ socioecon = left_join(education, income[,c(1,4)], by = "GEOID") %>% left_join(po
 colnames(hsa_list) = c("hsa_nci_id", "desc", "state-county", "GEOID")
 socioecon = left_join(socioecon, hsa_list[,c(1,4)], by = "GEOID") %>% select(GEOID, hsa_nci_id, education_diff, income_diff, poverty_diff, unemployment_diff, NAME)
 
+socioecon$GEOID = as.numeric(socioecon$GEOID)
+
 head(socioecon)
 ```
 ```{r}
