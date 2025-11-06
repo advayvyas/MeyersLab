@@ -305,7 +305,9 @@ pred_matrix = replicate(B, {
   fit_b = xgb.train(params = params, data = dtrain, nrounds = 300, verbose = 0)
   predict(fit_b, as.matrix(x.test))
 })
+```
 
+```{r}
 pred_mean = rowMeans(pred_matrix)
 pred_sd = apply(pred_matrix, 1, sd)
 
