@@ -1,5 +1,5 @@
 ---
-title: "Report 10"
+title: "Report 11"
 author: "Advay Vyas"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
@@ -48,7 +48,7 @@ This week, I will be looking at how to fix XGBoost, look at outliers and how the
 df_complete = read.csv("../complete_metrics.csv")
 df_complete = drop_na(df_complete)
 
-set.seed(777)
+set.seed(123)
 n = nrow(df_complete)
 train_idx = sample(seq_len(n), size = floor(0.7*n)) # 80% train
 test_idx = setdiff(seq_len(n), train_idx)
@@ -63,7 +63,6 @@ y.test = df_complete$diff_wis_season[test_idx]
 ```
 
 # XGBoost
-
 ```{r}
 dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
 dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
@@ -80,7 +79,6 @@ params = list(
   alpha = 2                # L1 regularization
 )
 
-set.seed(123)
 cv = xgb.cv(
   params = params,
   data = dtrain,
@@ -116,7 +114,7 @@ metrics = data.frame (
   Value = round(c(R2, cv_mean_R2, RMSE),4)
 )
 
-knitr::kable(metrics)
+knitr::kable(metrics, caption = "XGBoost prediction metrics")
 
 xgb_predictions = data.frame(
   estimate = pred_mean,
@@ -124,7 +122,7 @@ xgb_predictions = data.frame(
 )
 ```
 
-The best outcome for this was 70 percent train/test split. The small amount of data points is not very ideal for 
+The best outcome for this was 70 percent train/test split. The small amount of data points is not very ideal for this sort of prediction (wish I could have more data for training).  
 ```{r, fig.width = 8, fig.height = 4}
 ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
   geom_point(alpha = 0.7) +
@@ -133,7 +131,7 @@ ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
     x = "Predicted diff_wis_season",
     y = "Observed diff_wis_season",
     title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
-    subtitle = sprintf("R² = %.2f | CV R² = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
+    subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
   ) +
   theme_minimal() +
   scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
@@ -151,24 +149,357 @@ splits = data.frame (
 )
 
 knitr::kable(splits, caption = "Test/Train Splits and Metrics", col.names = c("Train %", "$R^2$", "CV $R^2$", "RMSE", "Prediction Count"))
-
 ```
 
 
 ```{r, fig.height = 4, fig.width = 8}
 xgb_importance = xgb.importance(model = xgb_fit)
-knitr::kable(head(xgb_importance))
+knitr::kable(head(xgb_importance), caption = "XGBoost feature importance")
 
 ggplot(xgb_importance) + geom_col(aes(y = reorder(Feature, Gain), x = Gain), fill='skyblue', col='black') + labs(y = "Feature", x = "Importance", title = "Feature importance (in-built, season, socioeconomic, XGBoost)")
 ```
 
-# Outliers
-
-
-
 # Horizon switches
+```{r}
+overall2 = read.csv("../forecasting_metrics_overall.csv")
+pop_desc = read.csv("../us_hsa_county_popdesc.csv")
+socioecon = read.csv("../Report 7/socioecon.csv") 
 
+us_hsa_county_popdesc_bygroup = pop_desc %>%
+  select(state, hsa_nci_id, area_km2_hsa, area_km2_state, n_hsa) %>% 
+  distinct()
 
+overall = overall2 %>%
+  left_join(us_hsa_county_popdesc_bygroup, by = c("state", "hsa_nci_id"))
 
+df_var_horizon = overall %>% 
+  filter(season == "2023/24") %>%
+  distinct()
+```
 
+```{r}
+socioecon_unique = socioecon %>%
+  group_by(hsa_nci_id) %>%
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
+```
 
+```{r}
+df_horizon = left_join(df_var_horizon, socioecon_unique, by = "hsa_nci_id") %>% mutate(density_ratio = density_hsa / density_state, area_ratio = area_km2_hsa / area_km2_state)
+```
+
+```{r}
+write.csv(df_horizon, "../all_horizon_complete_metrics.csv", row.names = FALSE)
+```
+
+```{r}
+df_horizon = read.csv("../all_horizon_complete_metrics.csv")
+df_horizon = drop_na(df_horizon)
+```
+
+Now, we have the dataset with all horizons and I think all socioecons should be included. 
+
+## Horizon 1
+```{r, fig.width = 8, fig.height = 4}
+df_horizon_1 = df_horizon[df_horizon$horizon == 1,]
+
+n = nrow(df_horizon_1)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+x.train = df_horizon_1[train_idx, vars]
+y.train = df_horizon_1$diff_wis_season[train_idx]
+
+x.test = df_horizon_1[test_idx, vars]
+y.test = df_horizon_1$diff_wis_season[test_idx]
+
+bart_fit = bart(
+  x.train = x.train,
+  y.train = y.train,
+  verbose = FALSE, keeptrees = TRUE)
+
+pred = predict(bart_fit, newdata = x.test)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+bart_predictions$observed = y.test
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+
+folds = createFolds(y.train, k = 5)
+
+cv_R2 = c()
+
+for (i in seq_along(folds)) {
+  test_idx  = folds[[i]]
+  train_idx = setdiff(seq_along(y.train), test_idx)
+  
+  bart_fit_cv = bart(
+    x.train = x.train[train_idx, ],
+    y.train = y.train[train_idx],
+    verbose = FALSE,
+    keeptrees = TRUE
+  )
+  
+  pred_cv = colMeans(predict(bart_fit_cv, newdata = x.train[test_idx, ]))
+  y_true  = y.train[test_idx]
+  
+  R2_fold = 1 - sum((y_true - pred_cv)^2) / sum((y_true - mean(y_true))^2)
+  cv_R2[i] = R2_fold
+}
+
+cv_R2_bart = mean(cv_R2)
+
+R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
+  sum((bart_predictions$observed - mean(bart_predictions$observed))^2)
+
+rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
+
+horizon_1 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+```
+
+```{r, fig.width = 8, fig.height = 4}
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## Horizon 2
+```{r, fig.width = 8, fig.height = 4}
+df_horizon_2 = df_horizon[df_horizon$horizon == 2,]
+
+n = nrow(df_horizon_2)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+x.train = df_horizon_2[train_idx, vars]
+y.train = df_horizon_2$diff_wis_season[train_idx]
+
+x.test = df_horizon_2[test_idx, vars]
+y.test = df_horizon_2$diff_wis_season[test_idx]
+
+bart_fit = bart(
+  x.train = x.train,
+  y.train = y.train,
+  verbose = FALSE, keeptrees = TRUE)
+
+pred = predict(bart_fit, newdata = x.test)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+bart_predictions$observed = y.test
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+
+folds = createFolds(y.train, k = 5)
+
+cv_R2 = c()
+
+for (i in seq_along(folds)) {
+  test_idx  = folds[[i]]
+  train_idx = setdiff(seq_along(y.train), test_idx)
+  
+  bart_fit_cv = bart(
+    x.train = x.train[train_idx, ],
+    y.train = y.train[train_idx],
+    verbose = FALSE,
+    keeptrees = TRUE
+  )
+  
+  pred_cv = colMeans(predict(bart_fit_cv, newdata = x.train[test_idx, ]))
+  y_true  = y.train[test_idx]
+  
+  R2_fold = 1 - sum((y_true - pred_cv)^2) / sum((y_true - mean(y_true))^2)
+  cv_R2[i] = R2_fold
+}
+
+cv_R2_bart = mean(cv_R2)
+
+R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
+  sum((bart_predictions$observed - mean(bart_predictions$observed))^2)
+
+rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
+
+horizon_2 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+```
+
+```{r, fig.width = 8, fig.height = 4}
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## Horizon 3
+```{r, fig.width = 8, fig.height = 4}
+df_horizon_3 = df_horizon[df_horizon$horizon == 3,]
+
+n = nrow(df_horizon_3)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+x.train = df_horizon_3[train_idx, vars]
+y.train = df_horizon_3$diff_wis_season[train_idx]
+
+x.test = df_horizon_3[test_idx, vars]
+y.test = df_horizon_3$diff_wis_season[test_idx]
+
+bart_fit = bart(
+  x.train = x.train,
+  y.train = y.train,
+  verbose = FALSE, keeptrees = TRUE)
+
+pred = predict(bart_fit, newdata = x.test)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+bart_predictions$observed = y.test
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+
+folds = createFolds(y.train, k = 5)
+
+cv_R2 = c()
+
+for (i in seq_along(folds)) {
+  test_idx  = folds[[i]]
+  train_idx = setdiff(seq_along(y.train), test_idx)
+  
+  bart_fit_cv = bart(
+    x.train = x.train[train_idx, ],
+    y.train = y.train[train_idx],
+    verbose = FALSE,
+    keeptrees = TRUE
+  )
+  
+  pred_cv = colMeans(predict(bart_fit_cv, newdata = x.train[test_idx, ]))
+  y_true  = y.train[test_idx]
+  
+  R2_fold = 1 - sum((y_true - pred_cv)^2) / sum((y_true - mean(y_true))^2)
+  cv_R2[i] = R2_fold
+}
+
+cv_R2_bart = mean(cv_R2)
+
+R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
+  sum((bart_predictions$observed - mean(bart_predictions$observed))^2)
+
+rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
+
+horizon_3 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+```
+
+```{r, fig.width = 8, fig.height = 4}
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## Horizon 4
+```{r, fig.width = 8, fig.height = 4}
+df_horizon_4 = df_horizon[df_horizon$horizon == 4,]
+
+n = nrow(df_horizon_4)
+train_idx = sample(seq_len(n), size = floor(0.8*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+x.train = df_horizon_4[train_idx, vars]
+y.train = df_horizon_4$diff_wis_season[train_idx]
+
+x.test = df_horizon_4[test_idx, vars]
+y.test = df_horizon_4$diff_wis_season[test_idx]
+
+bart_fit = bart(
+  x.train = x.train,
+  y.train = y.train,
+  verbose = FALSE, keeptrees = TRUE)
+
+pred = predict(bart_fit, newdata = x.test)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+bart_predictions$observed = y.test
+
+coverage_95_bart = mean(
+  bart_predictions$observed >= bart_predictions$ci_low &
+  bart_predictions$observed <= bart_predictions$ci_high,
+  na.rm = TRUE
+)
+
+folds = createFolds(y.train, k = 5)
+
+cv_R2 = c()
+
+for (i in seq_along(folds)) {
+  test_idx  = folds[[i]]
+  train_idx = setdiff(seq_along(y.train), test_idx)
+  
+  bart_fit_cv = bart(
+    x.train = x.train[train_idx, ],
+    y.train = y.train[train_idx],
+    verbose = FALSE,
+    keeptrees = TRUE
+  )
+  
+  pred_cv = colMeans(predict(bart_fit_cv, newdata = x.train[test_idx, ]))
+  y_true  = y.train[test_idx]
+  
+  R2_fold = 1 - sum((y_true - pred_cv)^2) / sum((y_true - mean(y_true))^2)
+  cv_R2[i] = R2_fold
+}
+
+cv_R2_bart = mean(cv_R2)
+
+R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
+  sum((bart_predictions$observed - mean(bart_predictions$observed))^2)
+
+rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
+
+horizon_4 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+```
+
+```{r, fig.width = 8, fig.height = 4}
+ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
+       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
+  theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## Total
+Basically, since BART (and XGBoost) are not linear, adjusted $R^2$ is not very accurate in describing the results. Therefore, I'm going to try to improve the $R^2$ through k-fold cross-validation along with RMSE, standard $R^2$, and of course coverage rate.
+```{r}
+knitr::kable(round(rbind(horizon_1, horizon_2, horizon_3, horizon_4),3), col.names = c("Horizon", "$R^2$", "CV $R^2$", "RMSE", "95% Coverage Rate"), caption = "Prediction metrics for each horizon with BART")
+```
