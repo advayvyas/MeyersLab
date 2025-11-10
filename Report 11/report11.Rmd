@@ -1,0 +1,174 @@
+---
+title: "Report 10"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(patchwork)
+library(mosaic)
+library(tidyr)
+library(formatR)
+
+library(data.table)
+library(tidycensus)
+library(dbarts)
+library(iml)
+
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+library(mgcv) 
+
+library(xgboost)
+```
+
+# Introduction
+This week, I will be looking at how to fix XGBoost, look at outliers and how they affect metrics, and switch horizons to see what works better.
+
+# Data preprocessing
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+
+set.seed(777)
+n = nrow(df_complete)
+train_idx = sample(seq_len(n), size = floor(0.7*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vars = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff")
+
+x.train = df_complete[train_idx, vars]
+y.train = df_complete$diff_wis_season[train_idx]
+
+x.test = df_complete[test_idx, vars]
+y.test = df_complete$diff_wis_season[test_idx]
+```
+
+# XGBoost
+
+```{r}
+dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
+dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
+
+params = list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = 0.05,              # lower learning rate for smoother fits
+  max_depth = 2,           # shallow trees for low variance
+  subsample = 0.6,         # randomly drop rows
+  colsample_bytree = 0.6,  # randomly drop columns
+  min_child_weight = 5,    # require decent sample size per leaf
+  lambda = 5,              # L2 regularization
+  alpha = 2                # L1 regularization
+)
+
+set.seed(123)
+cv = xgb.cv(
+  params = params,
+  data = dtrain,
+  nrounds = 500,
+  nfold = 10,
+  early_stopping_rounds = 20,
+  verbose = 0
+)
+
+best_nrounds = cv$best_iteration
+
+xgb_fit = xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_nrounds,
+  verbose = 0
+)
+
+
+pred_mean = predict(xgb_fit, as.matrix(x.test))
+
+n = length(y.test)
+p = ncol(x.train)
+R2 = 1 - sum((y.test - pred_mean)^2) / sum((y.test - mean(y.test))^2)
+
+RMSE = sqrt(mean((y.test - pred_mean)^2))
+
+cv_mean_R2 = 1 - (cv$evaluation_log$test_rmse_mean[cv$best_iteration]^2 /
+                  var(y.train))
+
+metrics = data.frame (
+  Metric = c("$R^2$", "Cross-validated $R^2$", "RMSE"),
+  Value = round(c(R2, cv_mean_R2, RMSE),4)
+)
+
+knitr::kable(metrics)
+
+xgb_predictions = data.frame(
+  estimate = pred_mean,
+  observed = y.test
+)
+```
+
+The best outcome for this was 70 percent train/test split. The small amount of data points is not very ideal for 
+```{r, fig.width = 8, fig.height = 4}
+ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    subtitle = sprintf("R² = %.2f | CV R² = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```
+The prediction metrics got a lot better but they don't seem to "understand" the prediction very well and are just clustered in one main area instead of actually spreading out along the red line. I'm thinking bootstrapping since that's the first thing that comes to mind, but I should look at how to artificially increase the data set to get better predictions. I tried with 90% and got something very funny. It predicts kinda accurately but also it's 18 predictions (talk about small samples). I don't how to save the 90, 80, 70,60 train/test splits etc without actually redoing everything each time so I wrote down the metrics for each one (you can see why I chose to display 70).
+
+```{r}
+splits = data.frame (
+  split = c(90, 80, 70, 70),
+  r2 = c(0.19, 0.16, 0.09, 0.03),
+  cvr2 = c(0.35, 0.39, 0.43, 0.48),
+  rmse = c(0.38, 0.31, 0.32, 0.29),
+  n = c(18, 35, 52, 70)
+)
+
+knitr::kable(splits, caption = "Test/Train Splits and Metrics", col.names = c("Train %", "$R^2$", "CV $R^2$", "RMSE", "Prediction Count"))
+
+```
+
+
+```{r, fig.height = 4, fig.width = 8}
+xgb_importance = xgb.importance(model = xgb_fit)
+knitr::kable(head(xgb_importance))
+
+ggplot(xgb_importance) + geom_col(aes(y = reorder(Feature, Gain), x = Gain), fill='skyblue', col='black') + labs(y = "Feature", x = "Importance", title = "Feature importance (in-built, season, socioeconomic, XGBoost)")
+```
+
+# Outliers
+
+
+
+# Horizon switches
+
+
+
+
+
