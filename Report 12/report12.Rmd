@@ -172,7 +172,7 @@ bart_1 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
-       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       title = "Observed vs Predicted (season, socioeconomic, 1)", 
        subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
@@ -243,7 +243,7 @@ xgb_1 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
   labs(
     x = "Predicted diff_wis_season",
     y = "Observed diff_wis_season",
-    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    title = "Observed vs Predicted (season, XGBoost, 1)",
     subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
   ) +
   theme_minimal() +
@@ -313,7 +313,7 @@ R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
 
 rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
 
-horizon_2_bart = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+horizon_2_bart = c("BART", R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
 ```
 
 ```{r, fig.width = 8, fig.height = 4}
@@ -322,7 +322,7 @@ bart_2 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
-       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       title = "Observed vs Predicted (season, socioeconomic, 2)",
        subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
@@ -393,7 +393,7 @@ xgb_2 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
   labs(
     x = "Predicted diff_wis_season",
     y = "Observed diff_wis_season",
-    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    title = "Observed vs Predicted (season, XGBoost, 2)",
     subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
   ) +
   theme_minimal() +
@@ -463,7 +463,7 @@ R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
 
 rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
 
-horizon_3_bart = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+horizon_3_bart = c("BART", R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
 ```
 
 ```{r, fig.width = 8, fig.height = 4}
@@ -472,7 +472,7 @@ bart_3 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
-       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       title = "Observed vs Predicted (season, socioeconomic, 3)",
        subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
@@ -543,7 +543,7 @@ xgb_3 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
   labs(
     x = "Predicted diff_wis_season",
     y = "Observed diff_wis_season",
-    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    title = "Observed vs Predicted (season, XGBoost, 3)",
     subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
   ) +
   theme_minimal() +
@@ -612,20 +612,22 @@ R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
 
 rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
 
-horizon_4_bart = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+horizon_4_bart = c("BART",R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
 ```
 
+### BART
 ```{r, fig.width = 8, fig.height = 4}
 bart_4 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   labs(x = "Predicted diff_wis_season", y = "Observed diff_wis_season",
-       title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
+       title = "Observed vs Predicted (season, socioeconomic, 4)", 
        subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
 
+### XGBoost
 ```{r}
 dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
 dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
@@ -691,7 +693,7 @@ xgb_4 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
   labs(
     x = "Predicted diff_wis_season",
     y = "Observed diff_wis_season",
-    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    title = "Observed vs Predicted (season, XGBoost, 4)",
     subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
   ) +
   theme_minimal() +
@@ -699,16 +701,40 @@ xgb_4 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
   coord_cartesian(xlim = c(-0.25, 1))
 ```
 
-## Total
+# Results
+## Table
 ```{r}
-total_metrics = as.data.frame(rbind(horizon_1_bart, horizon_1_xgb, horizon_2_bart, horizon_2_xgb, horizon_3_bart, horizon_3_xgb,  horizon_4_bart, horizon_4_xgb)) %>% mutate(across(everything(), ~ na_if(.x, "N/A")))
+total_metrics = as.data.frame(rbind(horizon_1_bart, horizon_1_xgb, horizon_2_bart, horizon_2_xgb, horizon_3_bart, horizon_3_xgb,  horizon_4_bart, horizon_4_xgb), row.names = FALSE) %>% mutate(across(everything(), ~ na_if(.x, "N/A")))
 total_metrics$V2 = as.numeric(total_metrics$V2)
 total_metrics$V3 = as.numeric(total_metrics$V3)
 total_metrics$V4 = as.numeric(total_metrics$V4)
 total_metrics$V5 = as.numeric(total_metrics$V5)
 total_metrics = total_metrics %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
+total_metrics = cbind( c("1", "1", "2", "2", "3", "3", "4", "4"), total_metrics)
+colnames(total_metrics) = c("Horizon", "Model", "R2", "CVR2", "RMSE", "coverage")
 
-knitr::kable(total_metrics, col.names = c("Horizon", "$R^2$", "CV $R^2$", "RMSE", "95% Coverage Rate"), caption = "Prediction metrics for each horizon with BART")
+knitr::kable(total_metrics, col.names = c("Horizon", "Model", "$R^2$", "CV $R^2$", "RMSE", "95% Coverage Rate"), caption = "Prediction metrics for each horizon with BART and XGBoost")
 ```
 
+## Prediction graphs
+```{r, fig.width =10, fig.height= 8}
+(bart_1 + bart_2) / (bart_3 + bart_4)
+(xgb_1 + xgb_2) / (xgb_3 + xgb_4)
+```
+
+## Metric graphs
+```{r, fig.width = 8, fig.height = 8, warning = FALSE}
+ggtotal = ggplot(total_metrics)
+
+cvr2graph = ggtotal + geom_col(aes(x = reorder(paste0("H", Horizon, "-", Model), CVR2), y = CVR2, fill = Model), col = "black") + labs(title = "Cross-validated R squared by model/horizon combo", x="Model/Horizon", y= "CV R^2") + theme_minimal()
+
+RMSEgraph = ggtotal + geom_col(aes(x = reorder(paste0("H", Horizon, "-", Model), -RMSE), y = RMSE, fill = Model), col = "black") + labs(title = "RMSE by model/horizon combo", x="Model/Horizon", y= "RMSE") + theme_minimal()
+
+coveragegraph = ggplot(total_metrics[total_metrics$Model == "BART",]) + geom_col(aes(x = reorder(paste0("H", Horizon, "-", Model), coverage), y = coverage, fill = Model), col = "black") + labs(title = "Coverage by BART/horizon combo", x="Model/Horizon", y= "Coverage") + theme_minimal()
+
+cvr2graph / RMSEgraph / coveragegraph
+```
+
+
 # Conclusion
+As we can see, XGBoost has consistently higher cross-validated $R^2$ (generalizes better across horizons), BART has a weird fall-off from $R^2$ to the cross-validated version, RMSE values go down for BART with each horizon (which is curious since they get longer), and the coverage BART rates stay strong.
