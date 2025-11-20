@@ -1,5 +1,5 @@
 ---
-title: "Report 11"
+title: "Report 12"
 author: "Advay Vyas"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
@@ -41,7 +41,7 @@ library(xgboost)
 ```
 
 # Introduction
-This week, I will be looking at how to fix XGBoost, look at outliers and how they affect metrics, and switch horizons to see what works better.
+This week, I will be looking at a report summarizing all the models over the first half of the semester and their appropriate metrics and results. 
 
 # Data preprocessing
 ```{r}
@@ -62,104 +62,7 @@ x.test = df_complete[test_idx, vars]
 y.test = df_complete$diff_wis_season[test_idx]
 ```
 
-# XGBoost
-```{r}
-dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
-dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
-
-params = list(
-  objective = "reg:squarederror",
-  eval_metric = "rmse",
-  eta = 0.05,              # lower learning rate for smoother fits
-  max_depth = 2,           # shallow trees for low variance
-  subsample = 0.6,         # randomly drop rows
-  colsample_bytree = 0.6,  # randomly drop columns
-  min_child_weight = 5,    # require decent sample size per leaf
-  lambda = 5,              # L2 regularization
-  alpha = 2                # L1 regularization
-)
-
-cv = xgb.cv(
-  params = params,
-  data = dtrain,
-  nrounds = 500,
-  nfold = 10,
-  early_stopping_rounds = 20,
-  verbose = 0
-)
-
-best_nrounds = cv$best_iteration
-
-xgb_fit = xgb.train(
-  params = params,
-  data = dtrain,
-  nrounds = best_nrounds,
-  verbose = 0
-)
-
-
-pred_mean = predict(xgb_fit, as.matrix(x.test))
-
-n = length(y.test)
-p = ncol(x.train)
-R2 = 1 - sum((y.test - pred_mean)^2) / sum((y.test - mean(y.test))^2)
-
-RMSE = sqrt(mean((y.test - pred_mean)^2))
-
-cv_mean_R2 = 1 - (cv$evaluation_log$test_rmse_mean[cv$best_iteration]^2 /
-                  var(y.train))
-
-metrics = data.frame (
-  Metric = c("$R^2$", "Cross-validated $R^2$", "RMSE"),
-  Value = round(c(R2, cv_mean_R2, RMSE),4)
-)
-
-knitr::kable(metrics, caption = "XGBoost prediction metrics")
-
-xgb_predictions = data.frame(
-  estimate = pred_mean,
-  observed = y.test
-)
-```
-
-The best outcome for this was 70 percent train/test split. The small amount of data points is not very ideal for this sort of prediction (wish I could have more data for training).  
-```{r, fig.width = 8, fig.height = 4}
-ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
-  geom_point(alpha = 0.7) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
-  labs(
-    x = "Predicted diff_wis_season",
-    y = "Observed diff_wis_season",
-    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
-    subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
-  ) +
-  theme_minimal() +
-  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
-  coord_cartesian(xlim = c(-0.25, 1))
-```
-The prediction metrics got a lot better but they don't seem to "understand" the prediction very well and are just clustered in one main area instead of actually spreading out along the red line. I'm thinking bootstrapping since that's the first thing that comes to mind, but I should look at how to artificially increase the data set to get better predictions. I tried with 90% and got something very funny. It predicts kinda accurately but also it's 18 predictions (talk about small samples). I don't how to save the 90, 80, 70,60 train/test splits etc without actually redoing everything each time so I wrote down the metrics for each one (you can see why I chose to display 70).
-
-```{r}
-splits = data.frame (
-  split = c(90, 80, 70, 60),
-  r2 = c(0.19, 0.16, 0.09, 0.03),
-  cvr2 = c(0.35, 0.39, 0.43, 0.48),
-  rmse = c(0.38, 0.31, 0.32, 0.29),
-  n = c(18, 35, 52, 70)
-)
-
-knitr::kable(splits, caption = "Test/Train Splits and Metrics", col.names = c("Train %", "$R^2$", "CV $R^2$", "RMSE", "Prediction Count"))
-```
-
-
-```{r, fig.height = 4, fig.width = 8}
-xgb_importance = xgb.importance(model = xgb_fit)
-knitr::kable(head(xgb_importance), caption = "XGBoost feature importance")
-
-ggplot(xgb_importance) + geom_col(aes(y = reorder(Feature, Gain), x = Gain), fill='skyblue', col='black') + labs(y = "Feature", x = "Importance", title = "Feature importance (in-built, season, socioeconomic, XGBoost)")
-```
-
-# Horizon switches
+# All horizons
 ```{r}
 overall2 = read.csv("../forecasting_metrics_overall.csv")
 pop_desc = read.csv("../us_hsa_county_popdesc.csv")
@@ -199,6 +102,7 @@ df_horizon = drop_na(df_horizon)
 Now, we have the dataset with all horizons and I think all socioecons should be included. 
 
 ## Horizon 1
+### BART
 ```{r, fig.width = 8, fig.height = 4}
 df_horizon_1 = df_horizon[df_horizon$horizon == 1,]
 
@@ -259,11 +163,11 @@ R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
 
 rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
 
-horizon_1 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+horizon_1_bart = c("BART", R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
 ```
 
 ```{r, fig.width = 8, fig.height = 4}
-ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+bart_1 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
@@ -273,7 +177,82 @@ ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
 
+### XGBoost
+```{r}
+dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
+dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
+
+params = list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = 0.05,              # lower learning rate for smoother fits
+  max_depth = 2,           # shallow trees for low variance
+  subsample = 0.6,         # randomly drop rows
+  colsample_bytree = 0.6,  # randomly drop columns
+  min_child_weight = 5,    # require decent sample size per leaf
+  lambda = 5,              # L2 regularization
+  alpha = 2                # L1 regularization
+)
+
+cv = xgb.cv(
+  params = params,
+  data = dtrain,
+  nrounds = 500,
+  nfold = 10,
+  early_stopping_rounds = 20,
+  verbose = 0
+)
+
+best_nrounds = cv$best_iteration
+
+xgb_fit = xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_nrounds,
+  verbose = 0
+)
+
+pred_mean = predict(xgb_fit, as.matrix(x.test))
+
+n = length(y.test)
+p = ncol(x.train)
+R2 = 1 - sum((y.test - pred_mean)^2) / sum((y.test - mean(y.test))^2)
+
+RMSE = sqrt(mean((y.test - pred_mean)^2))
+
+cv_mean_R2 = 1 - (cv$evaluation_log$test_rmse_mean[cv$best_iteration]^2 /
+                  var(y.train))
+
+metrics = data.frame (
+  Metric = c("$R^2$", "Cross-validated $R^2$", "RMSE"),
+  Value = round(c(R2, cv_mean_R2, RMSE),4)
+)
+
+xgb_predictions = data.frame(
+  estimate = pred_mean,
+  observed = y.test
+)
+
+horizon_1_xgb = c("XGBoost", "N/A", cv_mean_R2, RMSE, "N/A")
+```
+
+```{r, fig.width = 8, fig.height = 4}
+xgb_1 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```
+
 ## Horizon 2
+### BART
 ```{r, fig.width = 8, fig.height = 4}
 df_horizon_2 = df_horizon[df_horizon$horizon == 2,]
 
@@ -334,11 +313,11 @@ R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
 
 rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
 
-horizon_2 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+horizon_2_bart = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
 ```
 
 ```{r, fig.width = 8, fig.height = 4}
-ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+bart_2 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
@@ -348,7 +327,82 @@ ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
 
+### XGBoost
+```{r}
+dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
+dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
+
+params = list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = 0.05,              # lower learning rate for smoother fits
+  max_depth = 2,           # shallow trees for low variance
+  subsample = 0.6,         # randomly drop rows
+  colsample_bytree = 0.6,  # randomly drop columns
+  min_child_weight = 5,    # require decent sample size per leaf
+  lambda = 5,              # L2 regularization
+  alpha = 2                # L1 regularization
+)
+
+cv = xgb.cv(
+  params = params,
+  data = dtrain,
+  nrounds = 500,
+  nfold = 10,
+  early_stopping_rounds = 20,
+  verbose = 0
+)
+
+best_nrounds = cv$best_iteration
+
+xgb_fit = xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_nrounds,
+  verbose = 0
+)
+
+pred_mean = predict(xgb_fit, as.matrix(x.test))
+
+n = length(y.test)
+p = ncol(x.train)
+R2 = 1 - sum((y.test - pred_mean)^2) / sum((y.test - mean(y.test))^2)
+
+RMSE = sqrt(mean((y.test - pred_mean)^2))
+
+cv_mean_R2 = 1 - (cv$evaluation_log$test_rmse_mean[cv$best_iteration]^2 /
+                  var(y.train))
+
+metrics = data.frame (
+  Metric = c("$R^2$", "Cross-validated $R^2$", "RMSE"),
+  Value = round(c(R2, cv_mean_R2, RMSE),4)
+)
+
+xgb_predictions = data.frame(
+  estimate = pred_mean,
+  observed = y.test
+)
+
+horizon_2_xgb = c("XGBoost", "N/A", cv_mean_R2, RMSE, "N/A")
+```
+
+```{r, fig.width = 8, fig.height = 4}
+xgb_2 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```
+
 ## Horizon 3
+### BART
 ```{r, fig.width = 8, fig.height = 4}
 df_horizon_3 = df_horizon[df_horizon$horizon == 3,]
 
@@ -409,11 +463,11 @@ R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
 
 rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
 
-horizon_3 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+horizon_3_bart = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
 ```
 
 ```{r, fig.width = 8, fig.height = 4}
-ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+bart_3 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
@@ -421,6 +475,80 @@ ggplot(bart_predictions, aes(x = estimate, y = observed)) +
        title = "Observed vs Predicted with 95% Prediction Intervals (season, socioeconomic)", 
        subtitle = sprintf("95%% coverage = %.1f%% (n=%d)", 100*coverage_95_bart, nrow(bart_predictions))) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
+```
+
+### XGBoost
+```{r}
+dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
+dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
+
+params = list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = 0.05,              # lower learning rate for smoother fits
+  max_depth = 2,           # shallow trees for low variance
+  subsample = 0.6,         # randomly drop rows
+  colsample_bytree = 0.6,  # randomly drop columns
+  min_child_weight = 5,    # require decent sample size per leaf
+  lambda = 5,              # L2 regularization
+  alpha = 2                # L1 regularization
+)
+
+cv = xgb.cv(
+  params = params,
+  data = dtrain,
+  nrounds = 500,
+  nfold = 10,
+  early_stopping_rounds = 20,
+  verbose = 0
+)
+
+best_nrounds = cv$best_iteration
+
+xgb_fit = xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_nrounds,
+  verbose = 0
+)
+
+pred_mean = predict(xgb_fit, as.matrix(x.test))
+
+n = length(y.test)
+p = ncol(x.train)
+R2 = 1 - sum((y.test - pred_mean)^2) / sum((y.test - mean(y.test))^2)
+
+RMSE = sqrt(mean((y.test - pred_mean)^2))
+
+cv_mean_R2 = 1 - (cv$evaluation_log$test_rmse_mean[cv$best_iteration]^2 /
+                  var(y.train))
+
+metrics = data.frame (
+  Metric = c("$R^2$", "Cross-validated $R^2$", "RMSE"),
+  Value = round(c(R2, cv_mean_R2, RMSE),4)
+)
+
+xgb_predictions = data.frame(
+  estimate = pred_mean,
+  observed = y.test
+)
+
+horizon_3_xgb = c("XGBoost", "N/A", cv_mean_R2, RMSE, "N/A")
+```
+
+```{r, fig.width = 8, fig.height = 4}
+xgb_3 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
 ```
 
 ## Horizon 4
@@ -484,11 +612,11 @@ R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
 
 rmse_bart = sqrt(mean((y.test - colMeans(pred))^2))
 
-horizon_4 = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
+horizon_4_bart = c(R2_bart, cv_R2_bart, rmse_bart, coverage_95_bart)
 ```
 
 ```{r, fig.width = 8, fig.height = 4}
-ggplot(bart_predictions, aes(x = estimate, y = observed)) +
+bart_4 = ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0, alpha = 0.35) +
   geom_point(alpha = 0.7) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
@@ -498,11 +626,89 @@ ggplot(bart_predictions, aes(x = estimate, y = observed)) +
   theme_minimal() + scale_x_continuous(breaks=seq(-1,2,by=0.25)) + coord_cartesian(xlim = c(-0.25, 1))
 ```
 
-## Total
-Basically, since BART (and XGBoost) are not linear, adjusted $R^2$ is not very accurate in describing the results. Therefore, I'm going to try to improve the $R^2$ through k-fold cross-validation along with RMSE, standard $R^2$, and of course coverage rate.
 ```{r}
-knitr::kable(round(rbind(horizon_1, horizon_2, horizon_3, horizon_4),3), col.names = c("Horizon", "$R^2$", "CV $R^2$", "RMSE", "95% Coverage Rate"), caption = "Prediction metrics for each horizon with BART")
+dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
+dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
+
+params = list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = 0.05,              # lower learning rate for smoother fits
+  max_depth = 2,           # shallow trees for low variance
+  subsample = 0.6,         # randomly drop rows
+  colsample_bytree = 0.6,  # randomly drop columns
+  min_child_weight = 5,    # require decent sample size per leaf
+  lambda = 5,              # L2 regularization
+  alpha = 2                # L1 regularization
+)
+
+cv = xgb.cv(
+  params = params,
+  data = dtrain,
+  nrounds = 500,
+  nfold = 10,
+  early_stopping_rounds = 20,
+  verbose = 0
+)
+
+best_nrounds = cv$best_iteration
+
+xgb_fit = xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_nrounds,
+  verbose = 0
+)
+
+pred_mean = predict(xgb_fit, as.matrix(x.test))
+
+n = length(y.test)
+p = ncol(x.train)
+R2 = 1 - sum((y.test - pred_mean)^2) / sum((y.test - mean(y.test))^2)
+
+RMSE = sqrt(mean((y.test - pred_mean)^2))
+
+cv_mean_R2 = 1 - (cv$evaluation_log$test_rmse_mean[cv$best_iteration]^2 /
+                  var(y.train))
+
+metrics = data.frame (
+  Metric = c("$R^2$", "Cross-validated $R^2$", "RMSE"),
+  Value = round(c(R2, cv_mean_R2, RMSE),4)
+)
+
+xgb_predictions = data.frame(
+  estimate = pred_mean,
+  observed = y.test
+)
+
+horizon_4_xgb = c("XGBoost", "N/A", cv_mean_R2, RMSE, "N/A")
+```
+
+```{r, fig.width = 8, fig.height = 4}
+xgb_4 = ggplot(xgb_predictions, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, socioeconomic, XGBoost)",
+    subtitle = sprintf("R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f", R2, cv_mean_R2, RMSE, nrow(x.test))
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## Total
+```{r}
+total_metrics = as.data.frame(rbind(horizon_1_bart, horizon_1_xgb, horizon_2_bart, horizon_2_xgb, horizon_3_bart, horizon_3_xgb,  horizon_4_bart, horizon_4_xgb)) %>% mutate(across(everything(), ~ na_if(.x, "N/A")))
+total_metrics$V2 = as.numeric(total_metrics$V2)
+total_metrics$V3 = as.numeric(total_metrics$V3)
+total_metrics$V4 = as.numeric(total_metrics$V4)
+total_metrics$V5 = as.numeric(total_metrics$V5)
+total_metrics = total_metrics %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
+
+knitr::kable(total_metrics, col.names = c("Horizon", "$R^2$", "CV $R^2$", "RMSE", "95% Coverage Rate"), caption = "Prediction metrics for each horizon with BART")
 ```
 
 # Conclusion
-I think XGBoost is looking a lot better as well as BART (positive +0.3 $R^2$ scores but improvement is improvement!). Also, I think I forgot again, what are the horizons correlated to? There are a couple of small trends across the horizons as they advance numerically from one to four. Yeah, got a bunch of tests this week so will probably have a longer Report 12 after this one, might be it for this week!
