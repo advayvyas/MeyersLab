@@ -10,7 +10,7 @@ linkcolor: red
 ---
 
 ```{r global_options, echo=FALSE}
-knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+knitr::opts_chunk$set(fig.height=6, fig.width=7, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
 ```
 
 ------------------------------------------------------------------------
@@ -31,20 +31,190 @@ library(tidycensus)
 library(dbarts)
 library(iml)
 
-library(caret)
-library(purrr)
-library(fastDummies)
-library(GGally)
-library(mgcv) 
-
 library(xgboost)
+library(pdp)
 ```
 
 # Introduction
 This week, I will be comparing the models against a baseline model, conducting residual analysis and displaying QQ-plots, creating PDP plots, testing the bias-variance error decomposition of both BART and XGBoost and lastly creating an ensemble of the two models and seeing how it performs relative to the baseline and the individual models. 
 
 
+# Data preprocessing
+```{r}
+df_complete = read.csv("../complete_metrics.csv")
+df_complete = drop_na(df_complete)
+
+set.seed(123)
+n = nrow(df_complete)
+train_idx = sample(seq_len(n), size = floor(0.7*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vars = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff")
+
+x.train = df_complete[train_idx, vars]
+y.train = df_complete$diff_wis_season[train_idx]
+
+x.test = df_complete[test_idx, vars]
+y.test = df_complete$diff_wis_season[test_idx]
+```
+
 # Baseline model comparison
+## Regular baseline
+```{r, fig.width = 8, fig.height = 8}
+baseline = lm(diff_wis_season ~ pop_ratio + pct_urban + density_ratio + n_hsa + area_ratio + education_diff + income_diff + poverty_diff + unemployment_diff, data = df_complete)
+summary(baseline)
+
+par(mfrow = c(2, 2))
+plot(baseline)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+pred_baseline = predict(baseline, newdata = df_complete)
+obs = df_complete$diff_wis_season
+
+R2 = 1 - sum((obs - pred_baseline)^2) / sum((obs - mean(obs))^2)
+RMSE = sqrt(mean((obs - pred_baseline)^2))
+```
+
+```{r}
+set.seed(123)
+
+K = 10
+folds = sample(rep(1:K, length.out = nrow(df_complete)))
+
+cv_R2_values = c()
+
+for (k in 1:K) {
+  train_idx = which(folds != k)
+  test_idx  = which(folds == k)
+
+  m = lm(
+    diff_wis_season ~ pop_ratio + pct_urban + density_ratio + n_hsa +
+      area_ratio + education_diff + income_diff + poverty_diff + unemployment_diff,
+    data = df_complete[train_idx, ]
+  )
+
+  pred_k = predict(m, newdata = df_complete[test_idx, ])
+  obs_k  = df_complete$diff_wis_season[test_idx]
+
+  R2_k = 1 - sum((obs_k - pred_k)^2) / sum((obs_k - mean(obs_k))^2)
+  cv_R2_values[k] = R2_k
+}
+
+cv_mean_R2 = mean(cv_R2_values)
+```
+
+```{r, fig.height = 5}
+baseline_predictions = data.frame(
+  estimate = pred_baseline,
+  observed = obs
+)
+
+ggplot(baseline_predictions, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, baseline linear regression)",
+    subtitle = sprintf(
+      "R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f",
+      R2, cv_mean_R2, RMSE, nrow(df_complete)
+    )
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```
+## Baseline without outliers
+```{r, fig.width = 8, fig.height = 8}
+cooks = cooks.distance(baseline)
+influential_idx = which(cooks > 4 / nrow(df_complete))
+influential_idx
+
+df_outlier = df_complete[-influential_idx, ]
+
+baseline_outlier = lm(diff_wis_season ~ pop_ratio + pct_urban + density_ratio + n_hsa + area_ratio + education_diff + income_diff + poverty_diff + unemployment_diff, data = df_outlier)
+summary(baseline_outlier)
+
+par(mfrow = c(2, 2))
+plot(baseline_outlier)
+par(mfrow = c(1, 1))
+```
+```{r}
+pred_baseline_outlier = predict(baseline_outlier, newdata = df_outlier)
+obs_outlier = df_outlier$diff_wis_season
+
+R2_outlier = 1 - sum((obs_outlier - pred_baseline_outlier)^2) / sum((obs_outlier - mean(obs_outlier))^2)
+RMSE_outlier = sqrt(mean((obs_outlier - pred_baseline_outlier)^2))
+```
+
+```{r}
+K = 10
+folds = sample(rep(1:K, length.out = nrow(df_outlier)))
+
+cv_R2_values = c()
+
+for (k in 1:K) {
+  train_idx = which(folds != k)
+  test_idx  = which(folds == k)
+
+  m = lm(
+    diff_wis_season ~ pop_ratio + pct_urban + density_ratio + n_hsa +
+      area_ratio + education_diff + income_diff + poverty_diff + unemployment_diff,
+    data = df_outlier[train_idx, ]
+  )
+
+  pred_k = predict(m, newdata = df_outlier[test_idx, ])
+  obs_k  = df_outlier$diff_wis_season[test_idx]
+
+  R2_k = 1 - sum((obs_k - pred_k)^2) / sum((obs_k - mean(obs_k))^2)
+  cv_R2_values[k] = R2_k
+}
+
+cv_mean_R2_outlier = mean(cv_R2_values)
+```
+
+```{r, fig.height = 5}
+baseline_predictions_outlier = data.frame(
+  estimate = pred_baseline_outlier,
+  observed = obs_outlier
+)
+
+ggplot(baseline_predictions_outlier, aes(x = estimate, y = observed)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted diff_wis_season",
+    y = "Observed diff_wis_season",
+    title = "Observed vs Predicted (season, baseline linear regression)",
+    subtitle = sprintf(
+      "R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f",
+      R2_outlier, cv_mean_R2_outlier, RMSE, nrow(df_outlier)
+    )
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(-1, 2, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.25, 1))
+```
+
+## Analysis
+```{r, fig.height = 8, fig.width = 8}
+pvals_baseline = summary(baseline)$coefficients[, "Pr(>|t|)"]
+pvals_outlier  = summary(baseline_outlier)$coefficients[, "Pr(>|t|)"]
+
+b = ggplot(data.frame(term = names(pvals_baseline), pvalue = pvals_baseline), aes(x = term, y = pvalue)
+) + geom_col(fill = "skyblue", col="black") + labs(title = "Baseline Model Coefficient P-values", x = element_blank()) + theme_minimal() + theme(axis.text.x = element_blank()) 
+  
+bo = ggplot(data.frame(term = names(pvals_outlier), pvalue = pvals_outlier), aes(x = term, y = pvalue)
+) + geom_col(fill = "tomato", col="black") + labs(title = "Outlier-Removed Baseline Model Coefficient P-values") + theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+b / bo
+```
+This baseline model mainly just serves to check how well the more complex models compare to a practically "naive" estimate of the difference between state and HSA. Both linear regression models (outlier and regular) both have n_hsa as the most important coefficient  followed by density_ratio and then education_diff. While not identical, they maintain the ordering for the top three most significant coefficients. However, the outlier-removed model drops density_ratio and education_diff p-values into a very significant range at below 0.01.
+
+These baseline models and outlier-removal will be useful in the upcoming sections to test against the XGBoost and BART models since they have solid RMSE and $R^2$ metrics. For reference, the outlier-removed model improves in every metric.
 
 # Partial dependence plots
 
