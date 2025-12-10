@@ -1,0 +1,67 @@
+---
+title: "Report 13"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(patchwork)
+library(mosaic)
+library(tidyr)
+library(formatR)
+
+library(data.table)
+library(tidycensus)
+library(dbarts)
+library(iml)
+
+library(caret)
+library(purrr)
+library(fastDummies)
+library(GGally)
+library(mgcv) 
+
+library(xgboost)
+```
+
+# Introduction
+This week, I will be comparing the models against a baseline model, conducting residual analysis and displaying QQ-plots, creating PDP plots, testing the bias-variance error decomposition of both BART and XGBoost and lastly creating an ensemble of the two models and seeing how it performs relative to the baseline and the individual models. 
+
+
+# Baseline model comparison
+
+# Partial dependence plots
+
+# Residual analysis
+## QQ plots
+
+# Bias-variance error decomposition
+## BART
+## XGBoost
+
+# Ensemble of both models
+
+
+
+
+
+
+
+
+
