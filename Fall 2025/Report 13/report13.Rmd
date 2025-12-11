@@ -380,12 +380,35 @@ hsa.xgb / unemploy.xgb
 ```
 As we can see, the XGBoost model has a clear effect for n_hsa and unemployment_diff, however, these effects are global across all rows and therefore the PDP line represents the correlation quite well, with a dropoff or pickup at certain values of the variable that change the predicted response. Also, there are no very clear outliers in these figures like there was in BART, so no need to address that with the outlier-free versions.
 
-# Residual analysis
-## QQ plots
+# Why is $R^2$ so low?
+```{r}
+#y.train.scaled = scale(y.train)
+#center = attr(y.train.scaled, "scaled:center")
+#scale  = attr(y.train.scaled, "scaled:scale")
 
-# Bias-variance error decomposition
-## BART
-## XGBoost
+bart_fit = bart(
+  x.train = x.train,
+  y.train = y.train,
+  verbose = FALSE, keeptrees = TRUE)
+
+pred = predict(bart_fit, newdata = x.test)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025, 0.975))))
+colnames(bart_predictions) = c("ci_low", "ci_high")
+
+bart_predictions$estimate = apply(pred, 2, mean) 
+#bart_predictions$estimate = bart_predictions$estimate * scale + center
+
+bart_predictions$observed = y.test
+
+var(bart_predictions$estimate) 
+var(y.train)
+var(y.test)
+
+R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2) /
+  sum((bart_predictions$observed - mean(bart_predictions$observed))^2)
+R2_bart
+```
+
 
 # Ensemble of both models
 

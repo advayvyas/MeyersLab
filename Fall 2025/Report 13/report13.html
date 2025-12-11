@@ -372,17 +372,7 @@ baseline</a></li>
 <li><a href="#bart" id="toc-bart">BART</a></li>
 <li><a href="#xgboost" id="toc-xgboost">XGBoost</a></li>
 </ul></li>
-<li><a href="#residual-analysis" id="toc-residual-analysis">Residual
-analysis</a>
-<ul>
-<li><a href="#qq-plots" id="toc-qq-plots">QQ plots</a></li>
-</ul></li>
-<li><a href="#bias-variance-error-decomposition" id="toc-bias-variance-error-decomposition">Bias-variance error
-decomposition</a>
-<ul>
-<li><a href="#bart-1" id="toc-bart-1">BART</a></li>
-<li><a href="#xgboost-1" id="toc-xgboost-1">XGBoost</a></li>
-</ul></li>
+<li><a href="#why-is-r2-so-low" id="toc-why-is-r2-so-low">Why is <span class="math inline">\(R^2\)</span> so low?</a></li>
 <li><a href="#ensemble-of-both-models" id="toc-ensemble-of-both-models">Ensemble of both models</a></li>
 </ul>
 </div>
@@ -847,20 +837,36 @@ figures like there was in BART, so no need to address that with the
 outlier-free versions.</p>
 </div>
 </div>
-<div id="residual-analysis" class="section level1">
-<h1>Residual analysis</h1>
-<div id="qq-plots" class="section level2">
-<h2>QQ plots</h2>
-</div>
-</div>
-<div id="bias-variance-error-decomposition" class="section level1">
-<h1>Bias-variance error decomposition</h1>
-<div id="bart-1" class="section level2">
-<h2>BART</h2>
-</div>
-<div id="xgboost-1" class="section level2">
-<h2>XGBoost</h2>
-</div>
+<div id="why-is-r2-so-low" class="section level1">
+<h1>Why is <span class="math inline">\(R^2\)</span> so low?</h1>
+<pre class="r"><code># y.train.scaled = scale(y.train) center =
+# attr(y.train.scaled, &#39;scaled:center&#39;) scale =
+# attr(y.train.scaled, &#39;scaled:scale&#39;)
+
+bart_fit = bart(x.train = x.train, y.train = y.train, verbose = FALSE,
+    keeptrees = TRUE)
+
+pred = predict(bart_fit, newdata = x.test)
+bart_predictions = as.data.frame(t(apply(pred, 2, quantile, probs = c(0.025,
+    0.975))))
+colnames(bart_predictions) = c(&quot;ci_low&quot;, &quot;ci_high&quot;)
+
+bart_predictions$estimate = apply(pred, 2, mean)
+# bart_predictions$estimate = bart_predictions$estimate *
+# scale + center
+
+bart_predictions$observed = y.test
+
+var(bart_predictions$estimate)</code></pre>
+<pre><code>## [1] 0.01621831</code></pre>
+<pre class="r"><code>var(y.train)</code></pre>
+<pre><code>## [1] 0.07576043</code></pre>
+<pre class="r"><code>var(y.test)</code></pre>
+<pre><code>## [1] 0.09730513</code></pre>
+<pre class="r"><code>R2_bart = 1 - sum((bart_predictions$observed - bart_predictions$estimate)^2)/sum((bart_predictions$observed -
+    mean(bart_predictions$observed))^2)
+R2_bart</code></pre>
+<pre><code>## [1] 0.1834688</code></pre>
 </div>
 <div id="ensemble-of-both-models" class="section level1">
 <h1>Ensemble of both models</h1>
