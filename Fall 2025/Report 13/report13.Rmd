@@ -117,7 +117,7 @@ ggplot(baseline_predictions, aes(x = estimate, y = observed)) +
   labs(
     x = "Predicted diff_wis_season",
     y = "Observed diff_wis_season",
-    title = "Observed vs Predicted (season, baseline linear regression)",
+    title = "Observed vs Predicted (season, baseline linear regression minus outlier)",
     subtitle = sprintf(
       "R-squared = %.2f | CV R-squared = %.2f | RMSE = %.2f | n = %.0f",
       R2, cv_mean_R2, RMSE, nrow(df_complete)
@@ -217,6 +217,168 @@ This baseline model mainly just serves to check how well the more complex models
 These baseline models and outlier-removal will be useful in the upcoming sections to test against the XGBoost and BART models since they have solid RMSE and $R^2$ metrics. For reference, the outlier-removed model improves in every metric.
 
 # Partial dependence plots
+In this section, we want to look at more feature importance related questions regarding our two most complex models. 
+
+### BART
+```{r, fig.width = 8, fig.height = 4}
+bart_fit = bart(
+  x.train = x.train,
+  y.train = y.train,
+  verbose = FALSE, keeptrees = TRUE)
+
+pred_fun <- function(object, newdata) {
+  preds <- predict(object, newdata = newdata)
+  colMeans(preds)  
+}
+```
+
+First, let's take a look at feature importance since it might be not the same as the baseline model. 
+```{r}
+bart_vi = as.data.frame(bart_fit$varcount) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "avg") 
+
+
+ggplot(bart_vi) + geom_col(aes(x = reorder(variable, -avg), y = avg), fill='skyblue', col='black') + labs(x = "Variable", y = "Importance", title = "BART Variables by Importance") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#### Regular
+```{r}
+hsa.pdp = pdp::partial(object = bart_fit, pred.var = "n_hsa", pred.fun = pred_fun, train = df_complete, plot = FALSE) 
+unemploy.pdp = pdp::partial(object = bart_fit, pred.var = "unemployment_diff", pred.fun = pred_fun, train = df_complete, plot = FALSE)  
+```
+
+```{r}
+hsa = ggplot(hsa.pdp, aes(n_hsa, yhat)) + geom_line(aes(group = yhat.id), alpha = 0.2) +
+stat_summary(fun = mean, geom = "line", col = "red", size = 1) + theme_minimal() + 
+  labs(title = "ICE plot for n_hsa", x = "n_hsa", y = "Predicted response") + 
+  scale_y_continuous(limits = c(-0.25,1.25), breaks = seq(-0.25, 1.25, by = 0.25))
+
+unemploy = ggplot(unemploy.pdp, aes(unemployment_diff, yhat)) + geom_line(aes(group = yhat.id), alpha = 0.2) +
+stat_summary(fun = mean, geom = "line", col = "red", size = 1) + theme_minimal() + 
+  labs(title = "ICE plot for unemployment_diff", x = "unemployment_diff", y = "Predicted response") + 
+  scale_y_continuous(limits = c(-0.25,1.25), breaks = seq(-0.25, 1.25, by = 0.25))
+```
+
+```{r, fig.width = 8, fig.height = 7}
+hsa / unemploy
+```
+
+We can see that the different ICE lines have spread out along the "top" of these two figures while maintaining parallel to the PDP line and other ICE lines. That means that the effect might be changed drastically due to these outliers that maintain the global effect of these variables but skew the prediction.
+
+#### Outliers
+```{r}
+n = nrow(df_outlier)
+train_idx = sample(seq_len(n), size = floor(0.7*n)) # 80% train
+test_idx = setdiff(seq_len(n), train_idx)
+
+vars = c("pop_ratio", "pct_urban", "density_ratio", "n_hsa", "area_ratio", "education_diff", "income_diff", "poverty_diff", "unemployment_diff")
+
+x.train2 = df_outlier[train_idx, vars]
+y.train2 = df_outlier$diff_wis_season[train_idx]
+
+x.test2 = df_outlier[test_idx, vars]
+y.test2 = df_outlier$diff_wis_season[test_idx]
+
+bart_fit2 = bart(
+  x.train = x.train2,
+  y.train = y.train2,
+  verbose = FALSE, keeptrees = TRUE)
+```
+
+I also wanted to take a look at how removing the outliers would affect this since it makes education_diff and density_ratio much more significant in the linear baseline model.
+
+```{r}
+hsa.pdp2 = pdp::partial(object = bart_fit2, pred.var = "n_hsa", pred.fun = pred_fun, train = df_outlier, plot = FALSE) 
+unemploy.pdp2 = pdp::partial(object = bart_fit2, pred.var = "unemployment_diff", pred.fun = pred_fun, train = df_outlier, plot = FALSE) 
+```
+
+```{r}
+hsa2 = ggplot(hsa.pdp2, aes(n_hsa, yhat)) + geom_line(aes(group = yhat.id), alpha = 0.2) +
+stat_summary(fun = mean, geom = "line", col = "red", size = 1) + theme_minimal() + 
+  labs(title = "ICE plot for n_hsa (outlier-removed)", x = "n_hsa", y = "Predicted response") + 
+  scale_y_continuous(limits = c(-0.25, 1), breaks = seq(-0.25, 1, by = 0.25))
+
+unemploy2 = ggplot(unemploy.pdp2, aes(unemployment_diff, yhat)) + geom_line(aes(group = yhat.id), alpha = 0.2) +
+stat_summary(fun = mean, geom = "line", col = "red", size = 1) + theme_minimal() + 
+  labs(title = "ICE plot for unemployment_diff (outlier-removed)", x = "unemployment_diff", y = "Predicted response") + 
+  scale_y_continuous(limits = c(-0.25, 1), breaks = seq(-0.25, 1, by = 0.25))
+```
+
+```{r, fig.width = 8, fig.height = 7}
+hsa2 / unemploy2
+```
+For the top two metrics here, we can clearly see a steady decline for unemployment and a steady incline for n_hsa. Basically, the more HSAs there are, the larger the difference from HSA to state (that makes sense) and the larger the unemployment difference, the smaller the difference (this one is slightly confusing). However, we can see that removing the outliers enabled the ICE lines to coalesce more strongly around the center and the effect is global and more "together".
+
+
+### XGBoost
+```{r}
+dtrain = xgb.DMatrix(data = as.matrix(x.train), label = y.train)
+dtest  = xgb.DMatrix(data = as.matrix(x.test), label = y.test)
+
+params = list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = 0.05,              # lower learning rate for smoother fits
+  max_depth = 2,           # shallow trees for low variance
+  subsample = 0.6,         # randomly drop rows
+  colsample_bytree = 0.6,  # randomly drop columns
+  min_child_weight = 5,    # require decent sample size per leaf
+  lambda = 5,              # L2 regularization
+  alpha = 2                # L1 regularization
+)
+
+cv = xgb.cv(
+  params = params,
+  data = dtrain,
+  nrounds = 500,
+  nfold = 10,
+  early_stopping_rounds = 20,
+  verbose = 0
+)
+
+best_nrounds = cv$best_iteration
+
+xgb_fit = xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_nrounds,
+  verbose = 0
+)
+
+pred_fun_xgb <- function(object, newdata) {
+  predict(object, as.matrix(newdata))
+}
+```
+
+XGBoost has different important metrics. Let's check them out (gain is importance).
+```{r}
+knitr::kable(xgb.importance(model = xgb_fit))
+```
+
+```{r}
+hsa.pdp.xgb = pdp::partial(object = xgb_fit, pred.var = "n_hsa", pred.fun = pred_fun_xgb, train = x.train, plot = FALSE) 
+unemploy.pdp.xgb = pdp::partial(object = xgb_fit, pred.var = "unemployment_diff", pred.fun = pred_fun_xgb, train = x.train, plot = FALSE) 
+```
+
+```{r}
+hsa.xgb = ggplot(hsa.pdp.xgb, aes(n_hsa, yhat)) + geom_line(aes(group = yhat.id), alpha = 0.2) +
+stat_summary(fun = mean, geom = "line", col = "red", size = 1) + theme_minimal() + 
+  labs(title = "ICE plot for n_hsa (XGBoost)", x = "n_hsa", y = "Predicted response") + 
+  scale_y_continuous(limits = c(-0.25,1.25), breaks = seq(-0.25, 1.25, by = 0.25))
+
+unemploy.xgb = ggplot(unemploy.pdp.xgb, aes(unemployment_diff, yhat)) + geom_line(aes(group = yhat.id), alpha = 0.2) +
+stat_summary(fun = mean, geom = "line", col = "red", size = 1) + theme_minimal() + 
+  labs(title = "ICE plot for unemployment_diff (XGBoost)", x = "unemployment_diff", y = "Predicted response") + 
+  scale_y_continuous(limits = c(-0.25,1.25), breaks = seq(-0.25, 1.25, by = 0.25))
+```
+
+```{r, fig.width = 8, fig.height = 7}
+hsa.xgb / unemploy.xgb
+```
+As we can see, the XGBoost model has a clear effect for n_hsa and unemployment_diff, however, these effects are global across all rows and therefore the PDP line represents the correlation quite well, with a dropoff or pickup at certain values of the variable that change the predicted response. Also, there are no very clear outliers in these figures like there was in BART, so no need to address that with the outlier-free versions.
 
 # Residual analysis
 ## QQ plots
