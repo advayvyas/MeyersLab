@@ -33,12 +33,15 @@ head(hsa_state)
 colorado688 = hsa_state[hsa_state$hsa_nci_id==688,]
 ```
 
-```{r, fig.width = 7, fig.height = 5}
-ggplot(colorado688) + geom_line(color = "red", linewidth = 1, (aes(x=seq_len(148), y=inc_hsa))) + geom_line(color = "blue", linewidth = 1, (aes(x=seq_len(148), y=inc_state))) + labs(x="index (weeks, 2022 Week 39 to 2025 Week 30)", y = "infected_value (?)", title = "Local vs. state inc values for HSA ID 688 in Colorado") + theme_minimal()
+```{r, fig.width = 8, fig.height = 5}
+ggplot(colorado688) + geom_line( linewidth = 1, (aes(x=seq_len(148), y=inc_hsa, color = "HSA"))) + geom_line(linewidth = 1, (aes(x=seq_len(148), y=inc_state, color = "State"))) + labs(x="index (weeks, 2022 Week 39 to 2025 Week 30)", y = "infected_value (?)", title = "Local vs. state inc values for HSA ID 688 in Colorado") + theme_minimal() + scale_color_manual(name = "Legend", values = c("HSA" = "blue", "State" = "red"))
 ```
 
 # Metrics
-## Frechet distance
+## Fréchet distance
+I took some brief notes on Fréchet distance. Okay, so it's a measure of similarity that takes into account time and magnitude, I knew these things. The intuitive definition is a finite curved path with a dog on a leash and the dog has a separate path. The speed can be varied to keep slack in the leash and the Fréchet distance is the shortest possible leash that can traverse both paths while staying as a tether. Formally, it is the infimum of the maximum of the distances between the position of the dog and the position of the owner at time $t$.
+
+The discrete version of Fréchet distance is simplified by considering vertices and providing an efficient approximation. Even though the "leashes" or distances might be usually larger due to a confined set of possible "collars" or points, there are enough time steps (in my opinion) to overcome this. The algorithm for the discrete Fréchet distance is below.
 ```{r}
 discrete_frechet = function(P, Q, dist_fun = NULL) {
   # P: n x d matrix or data.frame
@@ -124,19 +127,22 @@ discrete_frechet = function(P, Q, dist_fun = NULL) {
 
 ```
 
+Okay, now we convert the "dog" and its "owner" into matrices and run it through the algorithms and plot the leash length over alignment steps.
 ```{r, fig.width = 7, fig.height = 5}
 P = as.matrix(colorado688$inc_hsa)
 Q = as.matrix(colorado688$inc_state)
 
 res = discrete_frechet(P, Q)
 
-res$frechet                  # final discrete Fréchet distance
-head(res$frechet_by_step)    # distance as path progresses
+res$frechet                  
+head(res$frechet_by_step)   
 
 ggplot() + geom_line(aes(x=seq_len(272), y=res$frechet_by_step), linewidth = 1) + theme_minimal() + labs(x="Steps", y="Fréchet distance", title = "Fréchet distance by step")
 ```
+Looks like the leash length quickly spikes, meaning that initially the forecasts are very similar but then change rapidly. It is kind of hard to interpret this graph without context since I don't know what regular values for Fréchet distance area. I will try to plot every single HSA and figure it out.
 
 ## Dynamic time warping
+NEED A WRITE UP
 ```{r}
 dtw_distance <- function(P, Q, dist_fun = NULL) {
   # P, Q: numeric vectors or matrices (rows = time points)
@@ -197,21 +203,25 @@ dtw_distance <- function(P, Q, dist_fun = NULL) {
 }
 ```
 
-```{r}
+NEED A QUICK WRITE UP
+```{r, fig.width = 7, fig.height = 5}
 P <- as.matrix(colorado688$inc_hsa)
 Q <- as.matrix(colorado688$inc_state)
 
 res_dtw <- dtw_distance(P, Q)
 
-res_dtw$dtw_distance      # final DTW cumulative cost
-head(res_dtw$cum_cost)    # running cumulative cost along optimal path
+res_dtw$dtw_distance      
+head(res_dtw$cum_cost)    
 
-plot(res_dtw$cum_cost, type = "l",
-     xlab = "Alignment step",
-     ylab = "Cumulative DTW cost",
-     main = "DTW cumulative cost along optimal path")
+
+ggplot() + geom_line(aes(x=seq_len(166), y=res_dtw$cum_cost), linewidth = 1) + theme_minimal() + labs(x="Steps", y="Cumulative DTW cost", title = "DTW cumulative cost along optimal path by step")
 ```
+NEED A QUICK WRITE UP
 
-## Metric analysis
+# More outlier HSA IDs
+NEED TO MAYBE RUN A FOR LOOP FOR EVERYTHING OR RANDOMLY CHOOSE UNTIL ONE LOOKS A LOT DIFFERENT STATE TO HSA
 
 # Conclusion
+NEED A WRITE UP
+
+FUTURE WORK COULD BE RUNNING THESE TWO METRICS FOR EVERY SINGLE ROW AND COMPARING SUMMARY STATISTICS OR SOMETHING
