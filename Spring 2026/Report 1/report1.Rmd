@@ -29,11 +29,11 @@ I will take a look at Frechet distance, dynamic time warping, and maybe some oth
 ```{r}
 hsa_state = read.csv("hsa_state_inc.csv")
 head(hsa_state)
-
-colorado688 = hsa_state[hsa_state$hsa_nci_id==688,]
 ```
 
 ```{r, fig.width = 8, fig.height = 5}
+colorado688 = hsa_state[hsa_state$hsa_nci_id==688,]
+
 ggplot(colorado688) + geom_line( linewidth = 1, (aes(x=seq_len(148), y=inc_hsa, color = "HSA"))) + geom_line(linewidth = 1, (aes(x=seq_len(148), y=inc_state, color = "State"))) + labs(x="index (weeks, 2022 Week 39 to 2025 Week 30)", y = "infected_value (?)", title = "Local vs. state inc values for HSA ID 688 in Colorado") + theme_minimal() + scale_color_manual(name = "Legend", values = c("HSA" = "blue", "State" = "red"))
 ```
 
@@ -137,62 +137,62 @@ res = discrete_frechet(P, Q)
 res$frechet                  
 head(res$frechet_by_step)   
 
-ggplot() + geom_line(aes(x=seq_len(272), y=res$frechet_by_step), linewidth = 1) + theme_minimal() + labs(x="Steps", y="Fréchet distance", title = "Fréchet distance by step")
+ggplot() + geom_line(aes(x=seq_len(272), y=res$frechet_by_step), linewidth = 1) + theme_minimal() + labs(x="Steps", y="Frechet distance", title = "Frechet distance by step")
 ```
 Looks like the leash length quickly spikes, meaning that initially the forecasts are very similar but then change rapidly. It is kind of hard to interpret this graph without context since I don't know what regular values for Fréchet distance area. I will try to plot every single HSA and figure it out.
 
 ## Dynamic time warping
-NEED A WRITE UP
+More notes on the other method, so basically dynamic time warping can "handle" time travel by basically shrinking or squeezing certain periods of time and then from there, it's easy to check how diffrent the magnitude is. Basically, it calculates an optimal match between two given sequences which has the lowest cost (sum of absolute differences). The sequences are warped non-linearly in the time dimension to look at how different they are as well.
 ```{r}
-dtw_distance <- function(P, Q, dist_fun = NULL) {
+dtw_distance = function(P, Q, dist_fun = NULL) {
   # P, Q: numeric vectors or matrices (rows = time points)
-  if (is.null(dist_fun)) dist_fun <- function(x, y) sqrt(sum((x - y)^2))
+  if (is.null(dist_fun)) dist_fun = function(x, y) sqrt(sum((x - y)^2))
   
-  P <- as.matrix(P)
-  Q <- as.matrix(Q)
+  P = as.matrix(P)
+  Q = as.matrix(Q)
   
-  n <- nrow(P)
-  m <- nrow(Q)
+  n = nrow(P)
+  m = nrow(Q)
   
   # distance matrix
-  dist_mat <- matrix(0, n, m)
+  dist_mat = matrix(0, n, m)
   for (i in 1:n) for (j in 1:m)
-    dist_mat[i,j] <- dist_fun(P[i, ], Q[j, ])
+    dist_mat[i,j] = dist_fun(P[i, ], Q[j, ])
   
   # cumulative cost matrix
-  D <- matrix(Inf, n, m)
-  D[1,1] <- dist_mat[1,1]
+  D = matrix(Inf, n, m)
+  D[1,1] = dist_mat[1,1]
   
   # initialize first row/column
-  for (i in 2:n) D[i,1] <- dist_mat[i,1] + D[i-1,1]
-  for (j in 2:m) D[1,j] <- dist_mat[1,j] + D[1,j-1]
+  for (i in 2:n) D[i,1] = dist_mat[i,1] + D[i-1,1]
+  for (j in 2:m) D[1,j] = dist_mat[1,j] + D[1,j-1]
   
   # fill rest of matrix
   for (i in 2:n) {
     for (j in 2:m) {
-      D[i,j] <- dist_mat[i,j] + min(D[i-1,j], D[i,j-1], D[i-1,j-1])
+      D[i,j] = dist_mat[i,j] + min(D[i-1,j], D[i,j-1], D[i-1,j-1])
     }
   }
   
   # backtrack optimal path
-  i <- n; j <- m
-  path <- matrix(c(i,j), ncol = 2)
+  i = n; j = m
+  path = matrix(c(i,j), ncol = 2)
   while (!(i == 1 && j == 1)) {
-    if (i == 1) { j <- j-1 }
-    else if (j == 1) { i <- i-1 }
+    if (i == 1) { j = j-1 }
+    else if (j == 1) { i = i-1 }
     else {
       # choose minimum predecessor
-      k <- which.min(c(D[i-1,j-1], D[i-1,j], D[i,j-1]))
-      if (k == 1) { i <- i-1; j <- j-1 }
-      else if (k == 2) { i <- i-1 }
-      else { j <- j-1 }
+      k = which.min(c(D[i-1,j-1], D[i-1,j], D[i,j-1]))
+      if (k == 1) { i = i-1; j = j-1 }
+      else if (k == 2) { i = i-1 }
+      else { j = j-1 }
     }
-    path <- rbind(c(i,j), path)
+    path = rbind(c(i,j), path)
   }
   
   # stepwise cumulative cost along path
-  step_cost <- dist_mat[path]
-  cum_cost <- cumsum(step_cost)
+  step_cost = dist_mat[path]
+  cum_cost = cumsum(step_cost)
   
   list(
     dtw_distance = D[n,m],
@@ -203,12 +203,12 @@ dtw_distance <- function(P, Q, dist_fun = NULL) {
 }
 ```
 
-NEED A QUICK WRITE UP
+We convert into matrices and run the code and find this graph as the DTW/step.
 ```{r, fig.width = 7, fig.height = 5}
-P <- as.matrix(colorado688$inc_hsa)
-Q <- as.matrix(colorado688$inc_state)
+P = as.matrix(colorado688$inc_hsa)
+Q = as.matrix(colorado688$inc_state)
 
-res_dtw <- dtw_distance(P, Q)
+res_dtw = dtw_distance(P, Q)
 
 res_dtw$dtw_distance      
 head(res_dtw$cum_cost)    
@@ -216,12 +216,35 @@ head(res_dtw$cum_cost)
 
 ggplot() + geom_line(aes(x=seq_len(166), y=res_dtw$cum_cost), linewidth = 1) + theme_minimal() + labs(x="Steps", y="Cumulative DTW cost", title = "DTW cumulative cost along optimal path by step")
 ```
-NEED A QUICK WRITE UP
+Still need more HSAs for comparison.
 
-# More outlier HSA IDs
-NEED TO MAYBE RUN A FOR LOOP FOR EVERYTHING OR RANDOMLY CHOOSE UNTIL ONE LOOKS A LOT DIFFERENT STATE TO HSA
+# Outlier HSA ID
+```{r, fig.width = 8, fig.height = 5}
+outlier = hsa_state[hsa_state$hsa_nci_id==236,]
+
+ggplot(outlier) + geom_line( linewidth = 1, (aes(x=seq_len(148), y=inc_hsa, color = "HSA"))) + geom_line(linewidth = 1, (aes(x=seq_len(148), y=inc_state, color = "State"))) + labs(x="index (weeks, 2022 Week 39 to 2025 Week 30)", y = "infected_value (?)", title = "Local vs. state inc values for HSA ID 236 in Georgia") + theme_minimal() + scale_color_manual(name = "Legend", values = c("HSA" = "blue", "State" = "red"))
+
+P_o = as.matrix(outlier$inc_hsa)
+Q_o = as.matrix(outlier$inc_state)
+```
+
+```{r, fig.width = 7, fig.height = 5}
+res_o = discrete_frechet(P_o, Q_o)
+
+res_o$frechet                  
+head(res_o$frechet_by_step)   
+
+ggplot() + geom_line(aes(x=seq_len(295), y=res_o$frechet_by_step), linewidth = 1) + theme_minimal() + labs(x="Steps", y="Frechet distance", title = "Frechet distance by step")
+```
+
+```{r, fig.width = 7, fig.height = 5}
+res_dtw_o = dtw_distance(P_o, Q_o)
+
+res_dtw_o$dtw_distance      
+head(res_dtw_o$cum_cost)    
+
+ggplot() + geom_line(aes(x=seq_len(231), y=res_dtw_o$cum_cost), linewidth = 1) + theme_minimal() + labs(x="Steps", y="Cumulative DTW cost", title = "DTW cumulative cost along optimal path by step")
+```
 
 # Conclusion
-NEED A WRITE UP
-
-FUTURE WORK COULD BE RUNNING THESE TWO METRICS FOR EVERY SINGLE ROW AND COMPARING SUMMARY STATISTICS OR SOMETHING
+We were able to implement both metrics on the data and test it a few times each. Future work could be running these two metrics for every single row and comparing summary statistics for all of them together to find major differences and if it can understand qualitative differences in curves.
