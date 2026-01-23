@@ -234,7 +234,7 @@ graph_hsa = function(hsa_id = 688) {
     labs(
       x = "index (weeks, 2022 Week 39 to 2025 Week 30)",
       y = "infected_value (?)",
-      title = paste0("DTW-aligned HSA vs. State inc values for HSA ID ", hsa_id, " from ", hsa$state)
+      title = paste0("DTW-aligned Local vs. state inc values for HSA ID ", hsa_id, " from ", hsa$state)
     ) +
     theme_minimal() +
     scale_color_manual(name = "Legend", values = c("HSA (warped)" = "blue", State = "red"))
@@ -291,12 +291,18 @@ id = sample(id_list, 1)
 graph_hsa(hsa_id = id)
 dtw_stats(hsa_id = id)
 ```
+## Metric explanations
+* Mean absolute lag is the average absolute time shift between matched points (points in P are aligned with points in Q about this many steps away)
+* Mean lag but this time it is signed and that means it is usually smaller and portrays more accurately what an average time step would do
+* Standard deviation of the time lag
+* Mean absolute error along the DTW-warped path (how well shapes match)
+* Root mean squared error along the DTW-warped path (penalizes larger differences more than the MAE)
+* Root mean squared error along the regular path (for comparison)
+* Median ratio of amplitudes along DTW-warped path (how much percent amplitude HSA is of state)
+* Correlation between absolute lag and absolute amplitude difference along DTW-warped path (negative means large lag small amplitude together, positive is opposite), sees if these variables are related for this HSA ID
 
-```{r}
+# Conclusion
+Shannon entropy didn't really have anything interesting related to these models and this sort of question so I couldn't really find anything. I didn't have time to get around to FluSight models this week because I was messing around with DTW but I'll check it out next week.
 
+DTW looks really good here and these metrics seem to be a good solution for the questions you had earlier regarding comparing these two curves.
 
-```
-
-# Shannon entropy
-
-# FluSight models
