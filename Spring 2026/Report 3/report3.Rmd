@@ -260,7 +260,8 @@ dtw_stats = function(hsa_id = 688) {
     dtw_mae      = mean(abs(delta_x)),
     dtw_rmse     = sqrt(mean(delta_x^2)),
     rmse = sqrt(mean((P[,1] - Q[,1])^2)),
-    amp_ratio    = median(P[i,1] / Q[j,1], na.rm=TRUE),
+    amp_ratio    = median(P[,1] / Q[,1], na.rm=TRUE),
+    dtw_amp_ratio    = median(P[i,1] / Q[j,1], na.rm=TRUE),
     lag_amp_corr = cor(abs(delta_t), abs(delta_x))
   )
 
@@ -269,7 +270,7 @@ dtw_stats = function(hsa_id = 688) {
     Value  = unname(unlist(stats_list))
   )
   
-  knitr::kable(stats, digits = 3)  
+  return(stats)
 }
 ```
 
@@ -278,5 +279,105 @@ dtw_stats = function(hsa_id = 688) {
 id_list = hsa_state$hsa_nci_id
 id = sample(id_list, 1)
 graph_hsa(hsa_id = id)
-dtw_stats(hsa_id = id)
+knitr::kable(dtw_stats(hsa_id = id), digits = 3)  
 ```
+
+# All-HSA metrics
+I want to initially make two tables, one that holds HSA IDs and another table that holds metrics and statistics about their distributions from all the HSA IDs.
+
+I tried running this with all 98,295 HSA IDs and that went terribly (took literal eons) so I'm going to use stratified sampling by state and go and get 10,000 IDs.
+```{r}
+set.seed(77)
+
+hsa_unique = hsa_state %>%
+  distinct(hsa_nci_id, state)
+
+state_sizes = hsa_unique %>%
+  count(state, name = "N_state") %>%
+  mutate(n_sample = ceiling(100 * N_state / length(hsa_unique$hsa_nci_id)))
+
+hsa_list = list()
+for (state_name in unique(hsa_state$state)) {
+  state_subset = hsa_unique %>% filter(state == state_name)
+  state_temp = sample(state_subset$hsa_nci_id, state_sizes[state_sizes$state == state_name, "n_sample"])
+  hsa_list = append(hsa_list, state_temp)
+}
+```
+
+```{r, cache = TRUE}
+results_list = vector("list", length(hsa_list$hsa_nci_id))
+
+for (i in seq_along(hsa_list$hsa_nci_id)) {
+  ID = hsa_list[[i]]
+  
+  out = pivot_wider(as.data.frame(dtw_stats(hsa_id = ID)), names_from = Metric, values_from = Value)
+  out$ID = ID
+  out = out[, c("ID", setdiff(names(out), "ID"))]
+
+}
+
+dtw_results <- do.call(rbind, results_list)
+```
+
+```{r}
+res = vector("list", length(hsa_list))
+
+for (i in seq_along(hsa_list)) {
+  ID = hsa_list[[i]]
+  
+  out = pivot_wider(as.data.frame(dtw_stats(hsa_id = ID)), names_from  = Metric, values_from = Value)
+  
+  out$ID = ID
+  out = out[, c("ID", setdiff(names(out), "ID"))]
+  
+  res[[i]] = out
+}
+
+dtw_results = do.call(rbind, res)
+```
+
+```{r}
+dtw_results
+knitr::kable(head(dtw_results))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
