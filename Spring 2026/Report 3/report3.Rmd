@@ -22,6 +22,7 @@ library(ggplot2)
 library(lubridate)
 library(patchwork)
 library(zoo)
+library(kableExtra)
 ```
 
 # Introduction
@@ -262,7 +263,8 @@ dtw_stats = function(hsa_id = 688) {
     rmse = sqrt(mean((P[,1] - Q[,1])^2)),
     amp_ratio    = median(P[,1] / Q[,1], na.rm=TRUE),
     dtw_amp_ratio    = median(P[i,1] / Q[j,1], na.rm=TRUE),
-    lag_amp_corr = cor(abs(delta_t), abs(delta_x))
+    lag_amp_corr = cor(abs(delta_t), abs(delta_x)),
+    frechet = res$frechet
   )
 
   stats = data.frame(
@@ -282,7 +284,7 @@ graph_hsa(hsa_id = id)
 knitr::kable(dtw_stats(hsa_id = id), digits = 3)  
 ```
 
-# All-HSA metrics
+# All HSA IDs metrics
 I want to initially make two tables, one that holds HSA IDs and another table that holds metrics and statistics about their distributions from all the HSA IDs.
 
 I tried running this with all 98,295 HSA IDs and that went terribly (took literal eons) so I'm going to use stratified sampling by state and go and get 10,000 IDs.
@@ -304,22 +306,7 @@ for (state_name in unique(hsa_state$state)) {
 }
 ```
 
-```{r, cache = TRUE}
-results_list = vector("list", length(hsa_list$hsa_nci_id))
-
-for (i in seq_along(hsa_list$hsa_nci_id)) {
-  ID = hsa_list[[i]]
-  
-  out = pivot_wider(as.data.frame(dtw_stats(hsa_id = ID)), names_from = Metric, values_from = Value)
-  out$ID = ID
-  out = out[, c("ID", setdiff(names(out), "ID"))]
-
-}
-
-dtw_results <- do.call(rbind, results_list)
-```
-
-```{r}
+```{r data, cache = TRUE}
 res = vector("list", length(hsa_list))
 
 for (i in seq_along(hsa_list)) {
@@ -341,7 +328,51 @@ dtw_results
 knitr::kable(head(dtw_results))
 ```
 
+Using our stratified sample, we can now look at some key statistics.
+```{r}
+metrics = setdiff(names(dtw_results), "ID")
 
+summary = reshape(do.call(rbind, lapply(metrics, \(m) data.frame(Metric = m, Var2 = names(summary(dtw_results[[m]])), Freq = as.numeric(summary(dtw_results[[m]])), row.names = NULL))), idvar = "Metric", timevar = "Var2", direction = "wide")
+colnames(summary) = c("Metric", "Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum")
+rownames(summary) = NULL
+```
+
+```{r, echo=FALSE}
+var_explain = data.frame(
+  Metric = c(
+    "mean_abs_lag", "signed_lag", "lag_sd", "dtw_mae", "dtw_rmse", "rmse", "amp_ratio", "dtw_amp_ratio", "lag_amp_corr", "frechet"),
+  Description = c(
+    "Average absolute time lag between warped points",
+    "Average time lag between warped points",
+    "Standard deviation of time lag along DTW-warped path",
+    "Mean absolute error along the DTW-warped path (shape comparison)",
+    "Root mean squared error along the DTW-warped path (large differences penalized)",
+    "Root mean squared error along the regular path",
+    "Median ratio of amplitudes along the regular path (HSA % of state)",
+    "Median ratio of amplitudes along the DTW-warped path (HSA % of state)",
+    "Correlation between absolute time lag and amplitude warped difference",
+    "Discrete Frechet distance (joint deviation in shape and timing)"
+  ),
+  Significance = c(
+    "Larger values indicate greater overall timing mismatch between series",
+    "Positive values imply HSA occurs later than State; negative values imply HSA leads State",
+    "Larger values indicate more variable or unstable timing misalignment",
+    "Larger values indicate greater amplitude mismatch after optimal alignment",
+    "Penalizes large local mismatches; sensitive to extreme deviations",
+    "Baseline mismatch ignoring timing differences; comparison benchmark for DTW metrics",
+     "Values > 1 indicate HSA generally larger than State; < 1 indicates attenuation",
+    "Values > 1 indicate HSA is larger than State along warping path; < 1 indicates attenuation after alignment",
+    "Positive values suggest larger timing shifts coincide with larger amplitude differences",
+    "Lower values indicate more similar trajectories; higher values indicate greater overall deviation (leashed dog and owner, the Frechet distance is the smallest leash required"
+  ),
+  stringsAsFactors = FALSE
+)
+```
+
+```{r}
+knitr::kable(as.data.frame(var_explain), caption = "Dynamic Time Warping Metric (+ Frechet) Descriptions and Significance") 
+knitr::kable(summary, caption = "Summary Statistics for Dynamic Time Warping Metrics (+ Frechet) on HSA IDs sampled with stratification (state)") 
+```
 
 
 
