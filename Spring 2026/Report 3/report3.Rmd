@@ -371,7 +371,13 @@ var_explain = data.frame(
 
 ```{r}
 knitr::kable(as.data.frame(var_explain), caption = "Dynamic Time Warping Metric (+ Frechet) Descriptions and Significance") 
-knitr::kable(summary, caption = "Summary Statistics for Dynamic Time Warping Metrics (+ Frechet) on HSA IDs sampled with stratification (state)") 
+knitr::kable(summary %>% mutate(across(where(is.numeric), ~ round(., 3))), caption = "Summary Statistics for Dynamic Time Warping Metrics (+ Frechet) on HSA IDs sampled with stratification (state)") 
+```
+```{r, fig.height = 6, fig.width = 12}
+dtw_results_long = dtw_results %>% pivot_longer(cols = -ID, names_to = "metric", values_to = "value")
+
+ggplot(dtw_results_long, aes(x = value)) + geom_density(fill = "skyblue", alpha = 0.8) + facet_wrap(~ metric, scales = "free", nrow = 2) + 
+  theme_minimal() + labs(title = "Density Plots for All DTW Metrics (+ Frechet)", x = "Value", y = "Density")
 ```
 
 
