@@ -28,12 +28,15 @@ library(kableExtra)
 # Introduction
 This week, I will try to find normal/average values for DTW metrics for all HSA IDs. After that, I'll go back and contextualize the metrics (with examples) and find outlier DTW metric values and investigate their trends and if those are captured well. Lastly, I'll explain the metrics more thoroughly (including how they are defined and implemented as algorithsm - for both DTW and Frechet) and implement unwarped amplitude since DTW tends to warp amplitude and then compare which doesn't seem useful.
 
-## Data processing
+# Data processing
 ```{r}
 hsa_state = read.csv("../hsa_state_inc.csv")
 ```
 
-## Metric functions
+# Metric functions
+## Explanations
+The `discrete_frechet` function compares two sequences of points $P$ and $Q$ and computes the smallest possible “worst-case” distance needed to match them in order. It first converts the inputs to matrices and builds a full distance matrix `dist_mat`, where entry $(i,j)$ is the distance between point $P_i$ and $Q_j$. It then uses dynamic programming with a table `D`, where `D[i, j]` represents the best (smallest possible) maximum distance encountered when matching the prefixes $P_{1:i}$ and $Q_{1:j}$. The first row and column are initialized by taking running maxima, since along the edges you can only move forward in one sequence and must keep track of the largest distance seen so far. For each interior cell, the algorithm looks at the three allowed predecessors (up, left, diagonal), chooses the one with the smallest current “worst value,” and then updates `D[i, j]` as $\max{D_{\text{prev}}, d(P_i,Q_j)}$. This implements the min–max recursion that defines the discrete Fréchet distance. The `Prev` array stores which predecessor was chosen so that, after filling the table, the code can backtrack from $(n,m)$ to $(1,1)$ and recover an optimal alignment path. Finally, it extracts the distances along this path and computes their cumulative maxima, showing how the Fréchet value builds up step by step. The returned `frechet` value is $D[n,m]$, which is the minimum possible maximum mismatch between the two curves under any valid alignment.
+
 ```{r}
 discrete_frechet = function(P, Q, dist_fun = NULL) {
   # P: n x d matrix or data.frame
@@ -116,7 +119,14 @@ discrete_frechet = function(P, Q, dist_fun = NULL) {
     frechet_by_step = frechet_steps
   )
 }
+```
 
+The `dtw_distance` function also starts by forming a distance matrix between all pairs of points in $P$ and $Q$, but instead of focusing on the maximum distance, it focuses on minimizing the total accumulated distance. It creates a dynamic programming table `D` where `D[i, j]` represents the minimum cumulative cost of aligning the prefixes $P_{1:i}$ and $Q_{1:j}$. The first row and column are initialized by summing distances, since along the boundary the only way to proceed is to keep adding costs. For each interior entry, the function applies the standard DTW recursion
+$$
+D(i,j) = d(P_i,Q_j) + \min{D(i-1,j), D(i,j-1), D(i-1,j-1)}.
+$$
+This allows one sequence to “stretch” relative to the other, because horizontal or vertical moves correspond to repeating points in one series. After filling `D`, the algorithm backtracks from $(n,m)$ to $(1,1)$ by always moving to the neighboring cell with the smallest cumulative cost, thereby reconstructing the optimal warping path. It then extracts the distances along this path and computes their cumulative sum, showing how the total cost grows. The final `dtw_distance` value is $D[n,m]$, which represents the smallest possible total mismatch between the two sequences under time warping.
+```{r}
 dtw_distance = function(P, Q, dist_fun = NULL) {
     # P, Q: numeric vectors or matrices (rows = time
     # points)
@@ -358,12 +368,12 @@ var_explain = data.frame(
     "Positive values imply HSA occurs later than State; negative values imply HSA leads State",
     "Larger values indicate more variable or unstable timing misalignment",
     "Larger values indicate greater amplitude mismatch after optimal alignment",
-    "Penalizes large local mismatches; sensitive to extreme deviations",
+    "Penalizes large local mismatches, more sensitive to extreme deviations",
     "Baseline mismatch ignoring timing differences; comparison benchmark for DTW metrics",
-     "Values > 1 indicate HSA generally larger than State; < 1 indicates attenuation",
-    "Values > 1 indicate HSA is larger than State along warping path; < 1 indicates attenuation after alignment",
-    "Positive values suggest larger timing shifts coincide with larger amplitude differences",
-    "Lower values indicate more similar trajectories; higher values indicate greater overall deviation (leashed dog and owner, the Frechet distance is the smallest leash required"
+     "Values > 1 indicate HSA generally larger than State; < 1 indicates smaller",
+    "Values > 1 indicate HSA is larger than State along warping path; < 1 indicates smaller after alignment",
+    "Positive values suggest larger timing shifts coincide with larger amplitude differences while negative values suggest that larger timing shifts coincide with smaller amplitude differences",
+    "Lower values indicate more similar trajectories; higher values indicate greater overall deviation (leashed dog and owner, the Frechet distance is the smallest leash required)"
   ),
   stringsAsFactors = FALSE
 )
