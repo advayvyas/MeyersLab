@@ -405,7 +405,30 @@ graph_frechet = ggplot(hsa_dtw, aes(x = fct_reorder(state, frechet), y = frechet
 (graph_lag + graph_rmse) / (graph_amp + graph_frechet)
 
 ```
+```{r}
+hsa_dtw$density_ratio = hsa_dtw$density_hsa / hsa_dtw$density_state
+hsa_dtw$area_ratio = hsa_dtw$area_km2_hsa / hsa_dtw$area_km2_state
+colnames(hsa_dtw)
 
+hsa_dtw_refined = hsa_dtw[,c(1:13, 16:17, 22, 29:30)]
+```
+
+
+
+```{r, fig.width = 8, fig.height = 8}
+cor_matrix = cor(hsa_dtw_refined %>% select(where(is.numeric)))
+
+corrplot(
+  cor_matrix,
+  method = "color",
+  type = "lower",
+  tl.col = "black",
+  addCoef.col = "black",
+    order = "hclust",
+  number.cex = 0.6,
+  diag = FALSE
+)
+```
 
 
 
