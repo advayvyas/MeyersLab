@@ -23,6 +23,7 @@ library(lubridate)
 library(patchwork)
 library(zoo)
 library(kableExtra)
+library(corrplot)
 ```
 
 # Introduction
@@ -375,6 +376,7 @@ var_explain = data.frame(
 knitr::kable(as.data.frame(var_explain), caption = "Dynamic Time Warping Metric (+ Frechet) Descriptions and Significance") 
 knitr::kable(summary %>% mutate(across(where(is.numeric), ~ round(., 3))), caption = "Summary Statistics for Dynamic Time Warping Metrics (+ Frechet) on HSA IDs sampled with stratification (state)") 
 ```
+
 ```{r, fig.height = 6, fig.width = 12}
 dtw_results_long = dtw_results %>% pivot_longer(cols = -ID, names_to = "metric", values_to = "value")
 
@@ -382,6 +384,27 @@ ggplot(dtw_results_long, aes(x = value)) + geom_density(fill = "skyblue", alpha 
   theme_minimal() + labs(title = "Density Plots for All DTW Metrics (+ Frechet)", x = "Value", y = "Density")
 ```
 
+I think the most promising statistics are signed_lag, rmse - dtw_rmse (smaller is better), amp_ratio, and Frechet distance.
+```{r, fig.height = 15, fig.width = 10}
+hsa_dtw = dtw_results %>% left_join(hsa_state, by = join_by(ID == hsa_nci_id)) 
+head(hsa_dtw)
+
+graph_lag = ggplot(hsa_dtw, aes(x = fct_reorder(state, lag_sd), y = lag_sd)) + 
+  geom_boxplot(fill = "skyblue") + coord_flip() 
+
+graph_rmse = ggplot(hsa_dtw, aes(x = fct_reorder(state, (rmse-dtw_rmse)), y = rmse-dtw_rmse)) + 
+           geom_boxplot(fill = "skyblue") + coord_flip()
+       
+graph_amp = ggplot(hsa_dtw, aes(x = fct_reorder(state, amp_ratio), y = amp_ratio)) + 
+          geom_boxplot(fill = "skyblue") + coord_flip()
+
+graph_frechet = ggplot(hsa_dtw, aes(x = fct_reorder(state, frechet), y = frechet)) + 
+           geom_boxplot(fill = "skyblue") + coord_flip()
+
+
+(graph_lag + graph_rmse) / (graph_amp + graph_frechet)
+
+```
 
 
 
