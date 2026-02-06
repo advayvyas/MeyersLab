@@ -1,5 +1,5 @@
 ---
-title: "Report 3"
+title: "Report 4"
 author: "Advay Vyas"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
@@ -389,6 +389,8 @@ I think the most promising statistics are signed_lag, rmse - dtw_rmse (smaller i
 hsa_dtw = dtw_results %>% left_join(hsa_state, by = join_by(ID == hsa_nci_id)) 
 head(hsa_dtw)
 
+hsa_dtw$ID = as.character(hsa_dtw$ID)
+
 graph_lag = ggplot(hsa_dtw, aes(x = fct_reorder(state, lag_sd), y = lag_sd)) + 
   geom_boxplot(fill = "skyblue") + coord_flip() 
 
@@ -403,6 +405,9 @@ graph_frechet = ggplot(hsa_dtw, aes(x = fct_reorder(state, frechet), y = frechet
 
 
 (graph_lag + graph_rmse) / (graph_amp + graph_frechet)
+
+ggplot(hsa_dtw, aes(x = fct_reorder(ID, lag_sd), y = lag_sd)) + 
+  geom_point(fill = "skyblue") + coord_flip() 
 
 ```
 Some cool box plots about some of the statistics, sorted. Might make some more after analyzing some of these metrics. I wanted to see any general trends in the data among states.
