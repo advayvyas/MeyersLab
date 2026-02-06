@@ -405,6 +405,8 @@ graph_frechet = ggplot(hsa_dtw, aes(x = fct_reorder(state, frechet), y = frechet
 (graph_lag + graph_rmse) / (graph_amp + graph_frechet)
 
 ```
+Some cool box plots about some of the statistics, sorted. Might make some more after analyzing some of these metrics. I wanted to see any general trends in the data among states.
+Refining the HSA dataset!
 ```{r}
 hsa_dtw$density_ratio = hsa_dtw$density_hsa / hsa_dtw$density_state
 hsa_dtw$area_ratio = hsa_dtw$area_km2_hsa / hsa_dtw$area_km2_state
@@ -412,9 +414,7 @@ colnames(hsa_dtw)
 
 hsa_dtw_refined = hsa_dtw[,c(1:13, 16:17, 22, 29:30)]
 ```
-
-
-
+This is a correlation matrix for the variables present in the DTW metrics and the socioeconomic variables.
 ```{r, fig.width = 8, fig.height = 8}
 cor_matrix = cor(hsa_dtw_refined %>% select(where(is.numeric)))
 
@@ -431,8 +431,14 @@ corrplot(
 ```
 
 
+# FluSight notes
+During the epiENGAGE sessions in the first breakout session on Thursday, I was able to attend a session that focused on analyzing a few models from the FluSight dashboard. In particular, a few models that predicted exceptionally well were [CMU-TimeSeries](https://github.com/cmu-delphi/exploration-tooling/) and [Cornell_JHU-hierarchSIR](https://github.com/BentoLab-DiseaseDynamics/Cornell_JHU-hierarchSIR). 
 
+## CMU-Time Series
+The model is a AR model with specific data that CMU externally sources, I think. I found another link with more (https://zoltardata.com/model/307)
 
+## Cornell_JHU-hierarchSIR
+The model is a hybrid SIR - Bayesian hierarchical discrepancy model for infectious disease forecasting. After a quick run-through, I couldn't find much more about the specifics of their model but this is the type of model. 
 
 
 
