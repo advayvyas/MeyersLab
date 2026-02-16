@@ -24,6 +24,7 @@ library(patchwork)
 library(zoo)
 library(kableExtra)
 library(corrplot)
+library(forcats)
 ```
 
 # Introduction
@@ -47,66 +48,81 @@ source("../write_dtw.R")
 # id = sample(id_list, 1)
 # graph_hsa(hsa_id = id)
 # knitr::kable(dtw_stats(hsa_id = id), digits = 3)  
-graph_hsa()
 ```
 
 ```{r, cache = TRUE}
 dtw_results = read_csv("../all_dtw_results.csv")
-knitr::kable(head(dtw_results))
-```
+hsa_dtw = dtw_results |> left_join(hsa_state, by = join_by(ID == hsa_nci_id)) 
 
-Using our sample, we can now look at some key statistics.
-```{r}
+metrics = setdiff(names(dtw_results), "ID")
 summary = reshape(do.call(rbind, lapply(metrics, \(m) data.frame(Metric = m, Var2 = names(summary(dtw_results[[m]])), Freq = as.numeric(summary(dtw_results[[m]])), row.names = NULL))), idvar = "Metric", timevar = "Var2", direction = "wide")
 colnames(summary) = c("Metric", "Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum")
 rownames(summary) = NULL
 
-knitr::kable(summary %>% mutate(across(where(is.numeric), ~ round(., 3))), caption = "Summary Statistics for Dynamic Time Warping Metrics (+ Frechet) on HSA IDs sampled with stratification (state)") 
+knitr::kable(summary |> mutate(across(where(is.numeric), ~ round(., 3))), caption = "Summary Statistics for Dynamic Time Warping Metrics (+ Frechet) on HSA IDs sampled with stratification (state)") 
 ```
 
-```{r, fig.height = 6, fig.width = 12}
-dtw_results_long = dtw_results %>% pivot_longer(cols = -c(state, ID), names_to = "metric", values_to = "value")
-hsa_unique = unique(hsa_state$state)
+# FluSight models
+## Cornell-JHU 
+### Notes
+The model is a hybrid SIR - Bayesian hierarchical discrepancy model for infectious disease forecasting. After a quick run-through, I couldn't find much more about the specifics of their model but this is the type of model. 
 
-ggplot(dtw_results_long, aes(x = metric, y = value)) +
-  geom_violin(fill = "royalblue", alpha = 0.6) +
-  facet_grid(rows = vars(state), scales = "free_y") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Metric Distributions Across States",
-       x = "Metric", y = "Value")
+### Implementation
+I think this one will be easier to implement, might have to transition to Python or another language that they use
 
-```
-
-```{r}
-ggplot(dtw_results_long, aes(x = value)) + geom_density(fill = "skyblue", alpha = 0.8) + facet_wrap(~ metric, scales = "free", nrow = 2) + 
-  theme_minimal() + labs(title = "Density Plots for All DTW Metrics (+ Frechet)", x = "Value", y = "Density")
-```
-
-# Violin plots
-```{r, fig.length = 12, fig.width = 12}
-id_state_lookup = hsa_state %>%
-  select(hsa_nci_id, state) %>%
-  distinct()
-
-id_state_lookup$ID = id_state_lookup$hsa_nci_id
-
-dtw_results_long = dtw_results_long %>%
-  left_join(id_state_lookup, by = "ID")
-
-ggplot(dtw_results_long, aes(x = metric, y = value)) +
-  geom_violin(col = "") +
-  facet_wrap(~state.x, ncol = 5, scales = "free_y")
-```
-
-# FluSight notes
-During the epiENGAGE sessions in the first breakout session on Thursday, I was able to attend a session that focused on analyzing a few models from the FluSight dashboard. In particular, a few models that predicted exceptionally well were [CMU-TimeSeries](https://github.com/cmu-delphi/exploration-tooling/) and [Cornell_JHU-hierarchSIR](https://github.com/BentoLab-DiseaseDynamics/Cornell_JHU-hierarchSIR). 
-
-## CMU-Time Series
+## CMU
+### Notes
 The model is a AR model with specific data that CMU externally sources, I think. I found another link with more (https://zoltardata.com/model/307)
 
-## Cornell_JHU-hierarchSIR
-The model is a hybrid SIR - Bayesian hierarchical discrepancy model for infectious disease forecasting. After a quick run-through, I couldn't find much more about the specifics of their model but this is the type of model. 
+### Implementation
+I'll try to first implement a basic AR model and then see if I can get access to their data.
+
+# More plots (with interpretations)
+## Analysis of last week's corerlation plot
+## Trends per state 
+```{r, fig.length = 12, fig.width = 12}
+dtw_results_long = dtw_results |> pivot_longer(cols = -ID, names_to = "metric", values_to = "value")
+
+id_state_lookup = hsa_dtw |> select(ID, state) |> distinct() 
+
+id_state_lookup$ID = as.numeric(id_state_lookup$ID)
+
+dtw_results_long = dtw_results_long |>
+  left_join(id_state_lookup, by = "ID")
+```
+
+```{r, fig.width = 8, fig.height = 5}
+ggplot(dtw_results_long, aes(x = value)) + geom_density(fill = "skyblue", alpha = 0.8) + facet_wrap(~ metric, scales = "free", nrow = 2) + 
+  theme_bw() + labs(title = "Density Plots for All DTW Metrics (+ Frechet)", x = "Value", y = "Density")
+```
+
+```{r, fig.height = 15, fig.width = 12}
+dtw_lagamp_corr = dtw_results_long |> filter(metric == "lag_amp_corr") |> mutate(state = fct_reorder(state, value, .fun = median, .desc = TRUE))
+
+ggplot(dtw_lagamp_corr, aes(x = metric, y = value)) +
+  geom_violin(fill = "royalblue", alpha = 0.8) + geom_boxplot(fill = "firebrick", alpha = 0.5, width = 0.3) + theme_bw() + facet_wrap(~state, nrow = 5) +
+ labs(title = "Violin Plots for Lag/Amplitude Correlation", x = "Value", y = "Density") 
+```
+
+In the plot below, the positive values indicate that DTW improved the RMSE of that HSA over the designated timeframe.
+```{r, fig.height = 15, fig.width = 12}
+dtw_results_diff = hsa_dtw |> mutate(dtw_diff = (rmse - dtw_rmse)) |> mutate(state = fct_reorder(state, dtw_diff, .fun = median, .desc = TRUE)) 
+
+ggplot(dtw_results_diff, aes(x = "", y = dtw_diff)) +
+ geom_violin(fill = "royalblue", alpha = 0.8) + geom_boxplot(fill = "firebrick", alpha = 0.5, width = 0.3) + theme_bw() + facet_wrap(~state, nrow = 5) +
+ labs(title = "Violin Plots for RMSE minus DTW RMSE", x = "Value", y = "Density") 
+```
+
+```{r, fig.height = 12, fig.width = 14}
+ggplot(hsa_dtw, aes(x = amp_ratio, y = dtw_amp_ratio)) +
+  geom_point() + geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", linewidth = 1) + 
+  labs(x = "amp_ratio", y = "dtw_amp_ratio", title = "Amplitude Ratios v. DTW Amplitude Ratios") + theme_bw() + facet_wrap(~state, nrow = 5)
+#  scale_y_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1, 1.25), limits = c(0, 1.25)) + scale_x_continuous(breaks = c(0, 0.5, 1, 1.5, 2, 2.5, 3)) 
+```
+
+## Outlier examination
+
+# Conclusion
 
 
 
