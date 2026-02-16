@@ -89,6 +89,10 @@ id_state_lookup$ID = as.numeric(id_state_lookup$ID)
 
 dtw_results_long = dtw_results_long |>
   left_join(id_state_lookup, by = "ID")
+
+# state_counts = id_state_lookup %>%
+#   group_by(state) %>%
+#   summarise(n = n())
 ```
 
 ```{r, fig.width = 8, fig.height = 5}
@@ -96,36 +100,84 @@ ggplot(dtw_results_long, aes(x = value)) + geom_density(fill = "skyblue", alpha 
   theme_bw() + labs(title = "Density Plots for All DTW Metrics (+ Frechet)", x = "Value", y = "Density")
 ```
 
+Remember from the last report that lag_amp_corr is the correlation between absolute time lag and amplitude warped difference where positive values suggest larger timing shifts coincide with larger amplitude differences while negative values suggest that larger timing shifts coincide with smaller amplitude differences. ANALYSIS COMING SOON.
 ```{r, fig.height = 15, fig.width = 12}
-dtw_lagamp_corr = dtw_results_long |> filter(metric == "lag_amp_corr") |> mutate(state = fct_reorder(state, value, .fun = median, .desc = TRUE))
+dtw_lagamp_corr =
+  dtw_results_long |>
+  filter(metric == "lag_amp_corr")
 
-ggplot(dtw_lagamp_corr, aes(x = metric, y = value)) +
-  geom_violin(fill = "royalblue", alpha = 0.8) + geom_boxplot(fill = "firebrick", alpha = 0.5, width = 0.3) + theme_bw() + facet_wrap(~state, nrow = 5) +
- labs(title = "Violin Plots for Lag/Amplitude Correlation", x = "Value", y = "Density") 
+state_order =
+  dtw_lagamp_corr |>
+  group_by(state) |>
+  summarise(med = median(value, na.rm = TRUE), .groups = "drop") |>
+  arrange(desc(med)) |>
+  pull(state)
+
+dtw_lagamp_corr$state = factor(dtw_lagamp_corr$state, levels = state_order)
+
+state_counts =
+  dtw_lagamp_corr |>
+  count(state)
+
+ggplot(dtw_lagamp_corr, aes(x = "", y = value)) + geom_violin(fill = "royalblue",
+    alpha = 0.8) + geom_boxplot(fill = "firebrick", alpha = 0.5,
+    width = 0.3) + facet_wrap(~state, nrow = 5) + theme_bw() +
+    labs(title = "Violin Plots for Lag/Amplitude Correlation",
+        x = NULL, y = "Value") + geom_text(data = state_counts,
+    aes(x = 1, y = -Inf, label = paste0("n=", n)), vjust = -0.5,
+    inherit.aes = FALSE, size = 3)
 ```
 
 In the plot below, the positive values indicate that DTW improved the RMSE of that HSA over the designated timeframe.
 ```{r, fig.height = 15, fig.width = 12}
-dtw_results_diff = hsa_dtw |> mutate(dtw_diff = (rmse - dtw_rmse)) |> mutate(state = fct_reorder(state, dtw_diff, .fun = median, .desc = TRUE)) 
+dtw_results_diff =
+  hsa_dtw |> mutate(dtw_diff = (rmse - dtw_rmse))
+
+state_order = 
+  dtw_results_diff |>
+  group_by(state) |>
+  summarise(med = median(dtw_diff, na.rm = TRUE), .groups = "drop") |>
+  arrange(desc(med)) |>
+  pull(state)
+
+dtw_results_diff$state = factor(dtw_results_diff$state, levels = state_order)
 
 ggplot(dtw_results_diff, aes(x = "", y = dtw_diff)) +
  geom_violin(fill = "royalblue", alpha = 0.8) + geom_boxplot(fill = "firebrick", alpha = 0.5, width = 0.3) + theme_bw() + facet_wrap(~state, nrow = 5) +
- labs(title = "Violin Plots for RMSE minus DTW RMSE", x = "Value", y = "Density") 
+ labs(title = "Violin Plots for RMSE minus DTW RMSE", x = "Value", y = "Density") + geom_text(data = state_counts, aes(x = 1, y = min(dtw_results_diff$rmse - dtw_results_diff$dtw_rmse) - 0.05, label = paste0("n=", n)), inherit.aes = FALSE, size = 3) 
 ```
+
+I feel like the violin plots are very hard to interpret for this variable difference.
+```{r, fig.height = 12, fig.width = 14}
+dtw_results_diff_amp =
+  hsa_dtw |> mutate(dtw_diff_amp = (amp_ratio - dtw_amp_ratio))
+
+state_order = 
+  dtw_results_diff_amp |>
+  group_by(state) |>
+  summarise(med = median(dtw_diff_amp, na.rm = TRUE), .groups = "drop") |>
+  arrange(desc(med)) |>
+  pull(state)
+
+dtw_results_diff_amp$state = factor(dtw_results_diff_amp$state, levels = state_order)
+
+ggplot(dtw_results_diff_amp, aes(x = "", y = dtw_diff_amp)) +
+ geom_violin(fill = "royalblue", alpha = 0.8) + geom_boxplot(fill = "firebrick", alpha = 0.5, width = 0.3) + theme_bw() + facet_wrap(~state, nrow = 5) +
+ labs(title = "Violin Plots for amplitude ratio minus DTW amplitude ratio", x = "Value", y = "Density") + geom_text(data = state_counts, aes(x = 1, y = min(dtw_results_diff_amp$amp_ratio - dtw_results_diff_amp$dtw_amp_ratio) - 0.05, label = paste0("n=", n)), inherit.aes = FALSE, size = 3)
+```
+
+Most states have their values on one side of the line, usually the left line, because DTW often improves how close the amplitude ratio is to 1. For example, states like Illinois and Oregon see a significant collection on one side of the line. However, a couple interesting states (with reasonable $n$ values) that have a more "even" distribution are Virginia, Texas, Georgia, Tennessee, Louisiana and West Virginia. One possible correlation with those states is that they are all southern states and states like Minnesota, Iowa, Idaho, Indiana, New York are all northern. However, Kentucky emerges as an exception so maybe not completely north vs. south. For a state to have a more equal distribution on each side of the line, that means that amplitudes were both above and below the state line. More specifically, if points are to the left and up from the red line, that means that the original amplitude ratio was smaller than the DTW (it fit the original from HSA being smaller to being closer). On the other hand, if points are to the right and down from the red line, that means that the original amplitude ratio was larger than the DTW. 
 
 ```{r, fig.height = 12, fig.width = 14}
 ggplot(hsa_dtw, aes(x = amp_ratio, y = dtw_amp_ratio)) +
-  geom_point() + geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", linewidth = 1) + 
-  labs(x = "amp_ratio", y = "dtw_amp_ratio", title = "Amplitude Ratios v. DTW Amplitude Ratios") + theme_bw() + facet_wrap(~state, nrow = 5)
-#  scale_y_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1, 1.25), limits = c(0, 1.25)) + scale_x_continuous(breaks = c(0, 0.5, 1, 1.5, 2, 2.5, 3)) 
+  geom_point() + geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", linewidth = 1) +
+  labs(x = "amp_ratio", y = "dtw_amp_ratio", title = "Amplitude Ratios v. DTW Amplitude Ratios") + theme_bw() + facet_wrap(~state, nrow = 5) +
+  geom_text(data = state_counts, aes(x = 2.5, y = 0.1, label = paste0("n=", n)), inherit.aes = FALSE, size = 3) +
+  scale_y_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1, 1.25), limits = c(0, 1.25)) + scale_x_continuous(breaks = c(0, 0.5, 1, 1.5, 2, 2.5, 3))
 ```
 
-## Outlier examination
-
 # Conclusion
-
-
-
+Not much state trends abound, but maybe north vs. south is a possible plotline we can hang onto for the future. Visualization is going well for the most part, I think everything is well contextualized. 
 
 
 
