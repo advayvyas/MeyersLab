@@ -62,23 +62,7 @@ rownames(summary) = NULL
 knitr::kable(summary |> mutate(across(where(is.numeric), ~ round(., 3))), caption = "Summary Statistics for Dynamic Time Warping Metrics (+ Frechet) on HSA IDs sampled with stratification (state)") 
 ```
 
-# FluSight models
-## Cornell-JHU 
-### Notes
-The model is a hybrid SIR - Bayesian hierarchical discrepancy model for infectious disease forecasting. After a quick run-through, I couldn't find much more about the specifics of their model but this is the type of model. 
-
-### Implementation
-I think this one will be easier to implement, might have to transition to Python or another language that they use
-
-## CMU
-### Notes
-The model is a AR model with specific data that CMU externally sources, I think. I found another link with more (https://zoltardata.com/model/307)
-
-### Implementation
-I'll try to first implement a basic AR model and then see if I can get access to their data.
-
 # More plots (with interpretations)
-## Analysis of last week's corerlation plot
 ## Trends per state 
 ```{r, fig.length = 12, fig.width = 12}
 dtw_results_long = dtw_results |> pivot_longer(cols = -ID, names_to = "metric", values_to = "value")
@@ -100,7 +84,7 @@ ggplot(dtw_results_long, aes(x = value)) + geom_density(fill = "skyblue", alpha 
   theme_bw() + labs(title = "Density Plots for All DTW Metrics (+ Frechet)", x = "Value", y = "Density")
 ```
 
-Remember from the last report that lag_amp_corr is the correlation between absolute time lag and amplitude warped difference where positive values suggest larger timing shifts coincide with larger amplitude differences while negative values suggest that larger timing shifts coincide with smaller amplitude differences. ANALYSIS COMING SOON.
+Remember from the last report that lag_amp_corr is the correlation between absolute time lag and amplitude warped difference where positive values suggest larger timing shifts coincide with larger amplitude differences while negative values suggest that larger timing shifts coincide with smaller amplitude differences. We can see that as a general rule, larger timing shifts coincide with smaller amplitude differences since most medians are negative or around 0, . A few very curious correlation values are North Carolina, which has its entire distribution of 30 HSAs under the 0 mark. Looking at some of the other graphs, North Carolina looks like a special state in terms of these metrics. By the way, this means that the larger the timing shift, the smaller the amplitude difference in North Carolina - interesting stuff.
 ```{r, fig.height = 15, fig.width = 12}
 dtw_lagamp_corr =
   dtw_results_long |>
@@ -110,7 +94,7 @@ state_order =
   dtw_lagamp_corr |>
   group_by(state) |>
   summarise(med = median(value, na.rm = TRUE), .groups = "drop") |>
-  arrange(desc(med)) |>
+  arrange((med)) |>
   pull(state)
 
 dtw_lagamp_corr$state = factor(dtw_lagamp_corr$state, levels = state_order)
@@ -128,10 +112,10 @@ ggplot(dtw_lagamp_corr, aes(x = "", y = value)) + geom_violin(fill = "royalblue"
     inherit.aes = FALSE, size = 3)
 ```
 
-In the plot below, the positive values indicate that DTW improved the RMSE of that HSA over the designated timeframe.
+We have dtw_diff as the fraction of discrepancy that can be resolved by nonlinear temporal warping. Therefore, this reflects both temporal misalignment and the changes in amplitude under DTW, rather than a decomposition of timing and structural error. Higher values indicate that trajectories are more similar up to temporal warping, whereas lower values indicate structural differences that persist even after alignment. In the plot below, the greater values indicate that DTW improved the RMSE of that HSA over the designated time frame more as a proportion. Since this sorted, we can see states like North Carolina, Maryland, and Kentucky in which the fraction of DTW RMSE improvement over RMSE where the median improvement is between 40% and 50% while states (with enough HSAs) like Minnesota, Iowa, and Kansas have values from 30% to 40%.
 ```{r, fig.height = 15, fig.width = 12}
 dtw_results_diff =
-  hsa_dtw |> mutate(dtw_diff = (rmse - dtw_rmse))
+  hsa_dtw |> mutate(dtw_diff = (rmse - dtw_rmse)/rmse)
 
 state_order = 
   dtw_results_diff |>
@@ -144,7 +128,7 @@ dtw_results_diff$state = factor(dtw_results_diff$state, levels = state_order)
 
 ggplot(dtw_results_diff, aes(x = "", y = dtw_diff)) +
  geom_violin(fill = "royalblue", alpha = 0.8) + geom_boxplot(fill = "firebrick", alpha = 0.5, width = 0.3) + theme_bw() + facet_wrap(~state, nrow = 5) +
- labs(title = "Violin Plots for RMSE minus DTW RMSE", x = "Value", y = "Density") + geom_text(data = state_counts, aes(x = 1, y = min(dtw_results_diff$rmse - dtw_results_diff$dtw_rmse) - 0.05, label = paste0("n=", n)), inherit.aes = FALSE, size = 3) 
+ labs(title = "Violin Plots for RMSE minus DTW RMSE over RMSE", x = "Value", y = "Density") + geom_text(data = state_counts, aes(x = 1, y = min(dtw_results_diff$rmse - dtw_results_diff$dtw_rmse) - 0.05, label = paste0("n=", n)), inherit.aes = FALSE, size = 3) 
 ```
 
 I feel like the violin plots are very hard to interpret for this variable difference.
@@ -177,8 +161,7 @@ ggplot(hsa_dtw, aes(x = amp_ratio, y = dtw_amp_ratio)) +
 ```
 
 # Conclusion
-Not much state trends abound, but maybe north vs. south is a possible plotline we can hang onto for the future. Visualization is going well for the most part, I think everything is well contextualized. 
-
+Not much state trends abound, but maybe north vs. south is a possible plot line we can hang onto for the future. Visualization is going well for the most part, I think everything is well contextualized. The graph descriptions make sense to me. Next week (this week), want to be able to implement FluSight models and maybe test these DTW metrics on them to see how good they are at describing real models. Also, might want to take a second look at that correlation plot from last week.
 
 
 
