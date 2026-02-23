@@ -118,19 +118,35 @@ glimpse(diff_peak_data)
 ```
 
 ## Time metrics vs. truth
-```{r}
+```{r, fig.length = 10, fig.width = 10}
 abs_time_summary =
   diff_peak_data |>
   group_by(ID, state) |>
   summarise(
-    mean_abs_diff = mean(abs(truth_time_diff), na.rm = TRUE),
+    sum_abs_diff = sum(abs(truth_time_diff), na.rm = TRUE),
     .groups = "drop"
   )
 
 diff_peak_time = diff_peak_data |> left_join(abs_time_summary) 
-
-ggplot(diff_peak_time, aes(x = mean_abs_lag, y = truth_time_diff_abs)) + geom_point() 
 ```
+
+```{r, fig.length = 10, fig.width = 10}
+# ggplot(diff_peak_time, aes(x = signed_lag, y = truth_time_diff)) + geom_point() 
+
+ggplot(diff_peak_time, aes(x = mean_abs_lag, y = truth_time_diff_abs, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window")
+```
+
+```{r, fig.length = 10, fig.width = 12}
+(ggplot(diff_peak_time, aes(fill = as.factor(peak_window))) +
+  geom_boxplot(aes(y = signed_lag)) +theme_bw() + 
+  labs(fill = "Peak window") + theme(legend.position = 'none')) + (ggplot(diff_peak_time, aes(fill = as.factor(peak_window))) +
+   geom_boxplot(aes(y = truth_time_diff)) + theme_bw() + 
+  labs(fill = "Peak window"))
+```
+
 ```{r}
 timing_cor_table =
   diff_peak_time |>
@@ -144,6 +160,7 @@ timing_cor_table =
   )
 timing_cor_table
 ```
+Time metrics are not very good but I think the bulk of the blame can be attributable to the lack of splitting per window, where we can see there might be a good bit of variation. More importantly, I think there's too much noise in DTW to understand the lag clearly and forecast what the peak difference will be because of how finicky the DTW can be.
 
 ## Magnitude metrics vs. truth
 ```{r, warning = FALSE}
@@ -154,14 +171,14 @@ diff_peak_mag = diff_peak_data |> filter(state_peak_value > 0, hsa_peak_value > 
 ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio, fill = as.factor(peak_window))) +
   geom_point(pch = 21, color = 'black') + 
   geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
-  labs(fill = "Peak window", color = "Peak window") + ylim(0, 5) + xlim(0, 25)
+  labs(fill = "Peak window", color = "Peak window", title = "Frechet vs. Truth") + ylim(0, 5) + xlim(0, 25)
 ```
 
 ```{r, message = FALSE, fig.length = 10, fig.width = 10}
-ggplot(diff_peak_mag, aes(x = dtw_rmse, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+ggplot(diff_peak_mag, aes(x = rmse, y = truth_mag_ratio, fill = as.factor(peak_window))) +
   geom_point(pch = 21, color = 'black') + 
-  geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
-  labs(fill = "Peak window", color = "Peak window") + ylim(0, 5) + xlim(0, 5)
+  geom_smooth( aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window", title = "RMSE vs. Truth") + ylim(0, 5) + xlim(0, 5)
 ```
 
 These hold upon zooming in (frechet and DTW_RMSE) very well! Basically, the more variation a variable, the more likely can latch onto a general trend and look correlated with a good linear regression. However, if focusing on the "nucleus" of the data, it is hard to find a good line if there is no real trend. By zooming in, we can see if there is a real trend in the core of the data.
@@ -184,37 +201,7 @@ knitr::kable(magnitude_cor_table)
 Magnitude metrics look pretty good to solid considering the metrics are created for the entire time-series and not per peak-window AND they are being compared to the truth at only the peaks.
 
 # Analysis
-
-
-
+For the magnitude metrics, it looks very promising. Particularly, the error metrics (RMSE, DTW MAE, DTW RMSE) and Frechet looks very very good. As for the time metrics, I think the mean_abs_lag will end up looking the best after I find the metrics per window.
 
 # Conclusion
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+This week, the first thing I will do is run these metrics per window because I think that will reveal if the time metric discrepancy is real. I think the noise from the space between the peaks is messing with the DTW metric data so that even though the DTW metric is showing the lag, the lag of the day-to-day cases is not correlated with the lag of the peak, for now.
