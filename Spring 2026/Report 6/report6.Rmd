@@ -1,0 +1,220 @@
+---
+title: "Report 5"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(zoo)
+library(kableExtra)
+library(corrplot)
+library(forcats)
+```
+
+# Introduction
+This week, I will save a CSV file of all metrics, create scatter plots comparing ground-truth to metrics for time and magnitude, and then find the metrics that perform best for each category (timing & magnitude) and maybe some additional metrics that describe curve differences as a whole well.
+
+# Data processing
+## Metric functions
+```{r}
+source("../metric_functions.R")
+source("../graphstat_functions.R")
+source("../write_dtw.R")
+```
+
+## Datasets
+```{r, message = FALSE, warning = FALSE}
+hsa_state = read.csv("../hsa_state_inc.csv")
+dtw_results = read_csv("../all_dtw_results.csv")
+hsa_dtw = dtw_results |> left_join(hsa_state, by = join_by(ID == hsa_nci_id)) 
+write_csv(unique(hsa_dtw), "../hsa_vs_state_metrics.csv")
+```
+
+```{r}
+all_metrics = read_csv("../hsa_vs_state_metrics.csv")
+```
+
+# Scatter plots
+```{r, fig.height = 14, fig.width = 10}
+# set.seed(77)
+id_list = hsa_state$hsa_nci_id
+id = sample(id_list, 1)
+graph_hsa(hsa_id = 1) # currently fixed at 1
+# knitr::kable(dtw_stats(hsa_id = id), digits = 3)
+```
+
+I think the best way to find the ground-truth peak is to find a place to cut the data into thirds into two subsets (because there are usually two peaks in every graph) and then take the maximum of that time period in terms of emergency department visits and then compare that peak 1 and peak 2 in state and HSA levels. The differences can be logged in a data set where we have the HSA, State, Peak Number (1-3), Truth Time Diff, Truth Magnitude Diff, DTW Metrics, and then Frechet in one line and then three lines for every HSA (each peak) so that we get 2013 rows (671 * 3). To understand where to cut the time-series data in half, I cycled through some graphs. I decided on cutting the graph at week index 50 and week index 100. Then, we can start the scatter plots!
+
+## Finding the ground truth
+The truth_diff values are **always** HSA - state. A positive time difference means that the HSA has a later peak and a positive magnitude difference means that the HSA has a larger peak.
+```{r}
+all_metrics_modified = all_metrics |>
+  mutate(week_index = (epi_week + (epi_year - 2022) * 52 - 38),
+    peak_window = case_when(
+      week_index <= 50  ~ 1,
+      week_index <= 100 ~ 2,
+      TRUE              ~ 3
+  ))
+
+truth_peaks =
+  all_metrics_modified |>
+  group_by(ID, state, peak_window) |>
+  summarise(
+    # HSA peak
+    hsa_peak_week  = week_index[which.max(inc_hsa)],
+    hsa_peak_value = max(inc_hsa, na.rm = TRUE),
+
+    # State peak
+    state_peak_week  = week_index[which.max(inc_state)],
+    state_peak_value = max(inc_state, na.rm = TRUE),
+
+    # Differences
+    truth_time_diff = hsa_peak_week - state_peak_week,
+    truth_time_diff_abs = abs(truth_time_diff),
+    truth_mag_ratio  = hsa_peak_value / state_peak_value,
+
+    .groups = "drop"
+  )
+
+metrics_unique =
+  all_metrics_modified |>
+  group_by(ID, state) |> 
+  filter(week_index == 2) |> 
+  summarise(
+    mean_abs_lag,
+    signed_lag,
+    lag_sd,
+    dtw_mae,
+    dtw_rmse,
+    rmse,
+    amp_ratio,
+    dtw_amp_ratio,
+    lag_amp_corr,
+    frechet,
+    .groups = "drop"
+  )
+
+diff_peak_data =
+  truth_peaks |> left_join(metrics_unique,
+            by = c("ID", "state"))
+
+glimpse(diff_peak_data)
+```
+
+## Time metrics vs. truth
+```{r}
+abs_time_summary =
+  diff_peak_data |>
+  group_by(ID, state) |>
+  summarise(
+    mean_abs_diff = mean(abs(truth_time_diff), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+diff_peak_time = diff_peak_data |> left_join(abs_time_summary) 
+
+ggplot(diff_peak_time, aes(x = mean_abs_lag, y = truth_time_diff_abs)) + geom_point() 
+```
+```{r}
+timing_cor_table =
+  diff_peak_time |>
+  group_by(peak_window) |>
+  summarise(
+    cor_mean_abs_lag = cor(truth_time_diff_abs , mean_abs_lag, use = "complete.obs"),
+    cor_signed_lag   = cor(truth_time_diff_abs , signed_lag, use = "complete.obs"),
+    cor_lag_sd       = cor(truth_time_diff_abs , lag_sd, use = "complete.obs"),
+    cor_frechet      = cor(truth_time_diff_abs , frechet, use = "complete.obs"),
+    .groups = "drop"
+  )
+timing_cor_table
+```
+
+## Magnitude metrics vs. truth
+```{r, warning = FALSE}
+diff_peak_mag = diff_peak_data |> filter(state_peak_value > 0, hsa_peak_value > 0) #, frechet < 25, truth_mag_ratio < 5, dtw_rmse < 5)
+```
+
+```{r, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window") + ylim(0, 5) + xlim(0, 25)
+```
+
+```{r, message = FALSE, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = dtw_rmse, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window") + ylim(0, 5) + xlim(0, 5)
+```
+
+These hold upon zooming in (frechet and DTW_RMSE) very well! Basically, the more variation a variable, the more likely can latch onto a general trend and look correlated with a good linear regression. However, if focusing on the "nucleus" of the data, it is hard to find a good line if there is no real trend. By zooming in, we can see if there is a real trend in the core of the data.
+```{r}
+magnitude_cor_table =
+  diff_peak_mag |>
+  group_by(peak_window) |>
+  summarise(
+    cor_dtw_mae       = cor(truth_mag_ratio, dtw_mae, use = "complete.obs"),
+    cor_dtw_rmse      = cor(truth_mag_ratio, dtw_rmse, use = "complete.obs"),
+    cor_rmse          = cor(truth_mag_ratio, rmse, use = "complete.obs"),
+    cor_amp_ratio     = cor(truth_mag_ratio, amp_ratio, use = "complete.obs"),
+    cor_dtw_amp_ratio = cor(truth_mag_ratio, dtw_amp_ratio, use = "complete.obs"),
+    cor_frechet       = cor(truth_mag_ratio, frechet, use = "complete.obs"),
+    .groups = "drop"
+  )
+
+knitr::kable(magnitude_cor_table)
+```
+Magnitude metrics look pretty good to solid considering the metrics are created for the entire time-series and not per peak-window AND they are being compared to the truth at only the peaks.
+
+# Analysis
+
+
+
+
+# Conclusion
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
