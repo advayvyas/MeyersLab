@@ -72,6 +72,7 @@ dtw_stats = function(hsa_id = 688, start = 1, end = Inf) {
   stats_list = list(
     mean_abs_lag = mean(abs(delta_t)),
     signed_lag   = mean(delta_t),
+    median_lag = median(delta_t),
     lag_sd       = sd(delta_t),
     dtw_mae      = mean(abs(delta_x)),
     dtw_rmse     = sqrt(mean(delta_x^2)),

@@ -131,3 +131,84 @@ diff_peak_data = truth_peaks %>% left_join(dtw_results_window, by = c("ID", "pea
 
 glimpse(diff_peak_data)
 ```
+```{r, fig.length = 10, fig.width = 10}
+# diff_peak_time = diff_peak_data |> left_join(abs_time_summary) 
+```
+
+```{r, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_data, aes(x = truth_time_diff, y = signed_lag)) + geom_point() +theme_bw() + facet_wrap(~peak_window) + geom_smooth()
+```
+
+```{r}
+timing_cor_table =
+  diff_peak_data |>
+  group_by(peak_window) |>
+  summarise(
+    cor_mean_abs_lag = cor(truth_time_diff_abs, mean_abs_lag),
+    cor_signed_lag   = cor(truth_time_diff , signed_lag),
+    cor_lag_sd       = cor(truth_time_diff , lag_sd),
+    cor_frechet      = cor(truth_time_diff , frechet),
+    .groups = "drop"
+  )
+timing_cor_table
+```
+
+# Magnitude
+```{r, warning = FALSE}
+diff_peak_mag = diff_peak_data |> filter(state_peak_value > 0, hsa_peak_value > 0, frechet < 25, truth_mag_ratio < 5) #, dtw_rmse < 5)
+```
+
+```{r, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window", title = "Frechet vs. Truth") 
+```
+
+
+```{r, fig.length = 6, fig.width = 8}
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) +
+  geom_point(color = 'black', alpha = 0.4) + 
+  geom_smooth(method = 'lm') + theme_bw() + 
+  labs(title = "Frechet vs. Truth") + ylim(0, 5) + xlim(0, 25)
+```
+
+```{r, fig.height = 8, fig.width = 8}
+frechet_lm = lm((truth_mag_ratio) ~ (frechet) * factor(peak_window), data = diff_peak_mag)
+
+summary(frechet_lm)
+par(mfrow = c(2, 2))
+plot(frechet_lm)
+
+diff_peak_mag$pred <- (predict(frechet_lm))
+
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) + 
+  geom_point(alpha= 0.4) +
+  geom_line(color = "firebrick", aes(y = pred), lwd = 1.2) +
+  theme_bw() + facet_wrap(~peak_window) 
+```
+
+
+```{r, message = FALSE, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = dtw_rmse, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = "lm", aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window", title = "RMSE vs. Truth") 
+```
+
+```{r}
+magnitude_cor_table =
+  diff_peak_mag |>
+  group_by(peak_window) |>
+  summarise(
+    cor_dtw_mae       = cor(truth_mag_ratio, dtw_mae, use = "complete.obs"),
+    cor_dtw_rmse      = cor(truth_mag_ratio, dtw_rmse, use = "complete.obs"),
+    cor_rmse          = cor(truth_mag_ratio, rmse, use = "complete.obs"),
+    cor_amp_ratio     = cor(truth_mag_ratio, amp_ratio, use = "complete.obs"),
+    cor_dtw_amp_ratio = cor(truth_mag_ratio, dtw_amp_ratio, use = "complete.obs"),
+    cor_frechet       = cor(truth_mag_ratio, frechet, use = "complete.obs"),
+    .groups = "drop"
+  )
+
+knitr::kable(magnitude_cor_table)
+```
