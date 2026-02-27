@@ -1,0 +1,133 @@
+---
+title: "Report 7"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(zoo)
+library(kableExtra)
+library(corrplot)
+library(forcats)
+```
+
+# Introduction
+This week, I will analyze the metrics per window and then analyze the metrics with scatter plots, looking specifically at time stuff.
+
+# Data processing
+## Metric functions
+```{r}
+source("../metric_functions.R")
+source("../graphstat_functions.R")
+source("../write_dtw.R")
+```
+
+## Saved datasets
+```{r, message = FALSE, warning = FALSE}
+hsa_state = read.csv("../hsa_state_inc.csv")
+dtw_results = read_csv("../all_dtw_results.csv")
+hsa_dtw = dtw_results |> left_join(hsa_state, by = join_by(ID == hsa_nci_id)) 
+write_csv(unique(hsa_dtw), "../hsa_vs_state_metrics.csv")
+all_metrics = read_csv("../hsa_vs_state_metrics.csv")
+```
+
+## Window dataset
+```{r, cache = TRUE, warning = FALSE}
+hsa_unique = hsa_state %>% distinct(hsa_nci_id, state)
+hsa_list = hsa_unique$hsa_nci_id
+
+res = vector("list", length(hsa_list) * length(windows))
+counter = 1
+
+windows = list(
+  w1 = c(1, 50),
+  w2 = c(51, 100),
+  w3 = c(101, Inf)
+)
+
+for (ID in hsa_list) {
+  for (w in names(windows)) {
+    
+    bounds = windows[[w]]
+    
+    out = pivot_wider(
+      dtw_stats(ID, start = bounds[1], end = bounds[2]),
+      names_from = Metric,
+      values_from = Value
+    )
+    
+    out$ID = ID
+    out$window = w
+    
+    res[[counter]] = out
+    counter = counter + 1
+  }
+}
+
+dtw_results_window = do.call(rbind, res)
+```
+
+```{r}
+dtw_results_window$window = factor(as.numeric(sub("w", "", dtw_results_window$window)), levels = c(1, 2, 3))
+dtw_results_window = dtw_results_window %>% rename(peak_window = window)
+dtw_results_window$peak_window = as.numeric(dtw_results_window$peak_window)
+
+glimpse(dtw_results_window)
+```
+
+## Ground truth
+```{r}
+all_metrics_modified = all_metrics |>
+  mutate(week_index = (epi_week + (epi_year - 2022) * 52 - 38),
+    peak_window = case_when(
+      week_index <= 50  ~ 1,
+      week_index <= 100 ~ 2,
+      TRUE              ~ 3
+  ))
+
+truth_peaks =
+  all_metrics_modified |>
+  group_by(ID, state, peak_window) |>
+  summarise(
+    # HSA peak
+    hsa_peak_week  = week_index[which.max(inc_hsa)],
+    hsa_peak_value = max(inc_hsa, na.rm = TRUE),
+
+    # State peak
+    state_peak_week  = week_index[which.max(inc_state)],
+    state_peak_value = max(inc_state, na.rm = TRUE),
+
+    # Differences
+    truth_time_diff = hsa_peak_week - state_peak_week,
+    truth_time_diff_abs = abs(truth_time_diff),
+    truth_mag_ratio  = hsa_peak_value / state_peak_value,
+
+    .groups = "drop"
+  )
+
+glimpse(truth_peaks)
+```
+
+
+## DTW metrics by window dataset
+```{r}
+diff_peak_data = truth_peaks %>% left_join(dtw_results_window, by = c("ID", "peak_window"))
+
+glimpse(diff_peak_data)
+```

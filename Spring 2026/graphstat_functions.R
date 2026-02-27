@@ -49,8 +49,12 @@ graph_hsa = function(hsa_id = 688) {
   (normal / warped) / (frechet + dtw)
 }
 
-dtw_stats = function(hsa_id = 688) {
+dtw_stats = function(hsa_id = 688, start = 1, end = Inf) {
   hsa = hsa_state[hsa_state$hsa_nci_id == hsa_id, ]
+  
+  n = nrow(hsa)
+  end = min(end, n)
+  hsa = hsa[start:end, ]
   
   P = as.matrix(hsa$inc_hsa)
   Q = as.matrix(hsa$inc_state)
