@@ -359,20 +359,22 @@ display: none;
 <div id="TOC">
 <ul>
 <li><a href="#introduction" id="toc-introduction">Introduction</a></li>
-<li><a href="#data-processing" id="toc-data-processing">Data
-processing</a>
+<li><a href="#data-loading" id="toc-data-loading">Data loading</a>
 <ul>
 <li><a href="#metric-functions" id="toc-metric-functions">Metric
 functions</a></li>
 <li><a href="#saved-datasets" id="toc-saved-datasets">Saved
 datasets</a></li>
-<li><a href="#window-dataset" id="toc-window-dataset">Window
-dataset</a></li>
+</ul></li>
+<li><a href="#window-dataset" id="toc-window-dataset">Window dataset</a>
+<ul>
 <li><a href="#ground-truth" id="toc-ground-truth">Ground truth</a></li>
 <li><a href="#dtw-metrics-by-window-dataset" id="toc-dtw-metrics-by-window-dataset">DTW metrics by window
 dataset</a></li>
 </ul></li>
+<li><a href="#time" id="toc-time">Time</a></li>
 <li><a href="#magnitude" id="toc-magnitude">Magnitude</a></li>
+<li><a href="#conclusion" id="toc-conclusion">Conclusion</a></li>
 </ul>
 </div>
 
@@ -382,8 +384,8 @@ dataset</a></li>
 <p>This week, I will analyze the metrics per window and then analyze the
 metrics with scatter plots, looking specifically at time stuff.</p>
 </div>
-<div id="data-processing" class="section level1">
-<h1>Data processing</h1>
+<div id="data-loading" class="section level1">
+<h1>Data loading</h1>
 <div id="metric-functions" class="section level2">
 <h2>Metric functions</h2>
 <pre class="r"><code>source(&quot;../metric_functions.R&quot;)
@@ -399,8 +401,9 @@ hsa_dtw = dtw_results |&gt;
 write_csv(unique(hsa_dtw), &quot;../hsa_vs_state_metrics.csv&quot;)
 all_metrics = read_csv(&quot;../hsa_vs_state_metrics.csv&quot;)</code></pre>
 </div>
-<div id="window-dataset" class="section level2">
-<h2>Window dataset</h2>
+</div>
+<div id="window-dataset" class="section level1">
+<h1>Window dataset</h1>
 <pre class="r"><code>hsa_unique = hsa_state %&gt;%
     distinct(hsa_nci_id, state)
 hsa_list = hsa_unique$hsa_nci_id
@@ -448,7 +451,6 @@ glimpse(dtw_results_window)</code></pre>
 ## $ frechet       &lt;dbl&gt; 0.39, 0.28, 0.41, 3.50, 1.67, 1.16, 0.86, 0.61, 1.09, 0.…
 ## $ ID            &lt;int&gt; 688, 688, 688, 985, 985, 985, 795, 795, 795, 754, 754, 7…
 ## $ peak_window   &lt;dbl&gt; 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1,…</code></pre>
-</div>
 <div id="ground-truth" class="section level2">
 <h2>Ground truth</h2>
 <pre class="r"><code>all_metrics_modified = all_metrics |&gt;
@@ -521,6 +523,10 @@ glimpse(diff_peak_data)</code></pre>
 ## $ dtw_amp_ratio       &lt;dbl&gt; 0.7333333, 0.9117647, 0.8183673, 0.8916968, 0.8476…
 ## $ lag_amp_corr        &lt;dbl&gt; 0.08660950, -0.37544901, 0.05472684, -0.41424023, …
 ## $ frechet             &lt;dbl&gt; 1.57, 1.05, 2.18, 1.42, 2.39, 3.91, 1.28, 0.91, 2.…</code></pre>
+</div>
+</div>
+<div id="time" class="section level1">
+<h1>Time</h1>
 <pre class="r"><code># diff_peak_time = diff_peak_data |&gt;
 # left_join(abs_time_summary)</code></pre>
 <pre class="r"><code>ggplot(diff_peak_data, aes(x = truth_time_diff, y = signed_lag)) +
@@ -540,7 +546,6 @@ timing_cor_table</code></pre>
 ## 1           1            0.228         -0.142     0.0820      0.0533
 ## 2           2            0.234         -0.430     0.248      -0.0917
 ## 3           3            0.150         -0.302     0.123      -0.0495</code></pre>
-</div>
 </div>
 <div id="magnitude" class="section level1">
 <h1>Magnitude</h1>
@@ -664,6 +669,23 @@ knitr::kable(magnitude_cor_table)</code></pre>
 </tr>
 </tbody>
 </table>
+</div>
+<div id="conclusion" class="section level1">
+<h1>Conclusion</h1>
+<p>Time metrics are once again disappointing and might have to rework
+how they are evaluated by a case-by-case basis to figure out the root
+issue. I think it just comes down to much noise and I might be more
+interested in how the top 20% percentile points are shifted and DTW
+might be a better metric for that region than simply the peak value.
+Magnitude metrics (Frechet in particular) look excellent. Need to
+understand how DTW is able to match curves properly (maybe it just moves
+points forward and backward in time to fit the best, which might be
+concerning). Added a median to lag, will look through that next week.
+This week was mainly investigating how much better Frechet was at
+evaluating the peak difference (but it might be encoded because the diff
+at the peak is likely largest). Maybe time to reset and understand what
+the goals of the metrics are to better design them. A little frustrating
+but we do have metrics by window at least.</p>
 </div>
 
 

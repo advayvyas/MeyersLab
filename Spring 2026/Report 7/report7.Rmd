@@ -30,7 +30,7 @@ library(forcats)
 # Introduction
 This week, I will analyze the metrics per window and then analyze the metrics with scatter plots, looking specifically at time stuff.
 
-# Data processing
+# Data loading
 ## Metric functions
 ```{r}
 source("../metric_functions.R")
@@ -47,7 +47,7 @@ write_csv(unique(hsa_dtw), "../hsa_vs_state_metrics.csv")
 all_metrics = read_csv("../hsa_vs_state_metrics.csv")
 ```
 
-## Window dataset
+# Window dataset
 ```{r, cache = TRUE, warning = FALSE}
 hsa_unique = hsa_state %>% distinct(hsa_nci_id, state)
 hsa_list = hsa_unique$hsa_nci_id
@@ -131,6 +131,9 @@ diff_peak_data = truth_peaks %>% left_join(dtw_results_window, by = c("ID", "pea
 
 glimpse(diff_peak_data)
 ```
+
+# Time
+
 ```{r, fig.length = 10, fig.width = 10}
 # diff_peak_time = diff_peak_data |> left_join(abs_time_summary) 
 ```
@@ -212,3 +215,6 @@ magnitude_cor_table =
 
 knitr::kable(magnitude_cor_table)
 ```
+
+# Conclusion
+Time metrics are once again disappointing and might have to rework how they are evaluated by a case-by-case basis to figure out the root issue. I think it just comes down to much noise and I might be more interested in how the top 20% percentile points are shifted and DTW might be a better metric for that region than simply the peak value. Magnitude metrics (Frechet in particular) look excellent. Need to understand how DTW is able to match curves properly (maybe it just moves points forward and backward in time to fit the best, which might be concerning). Added a median to lag, will look through that next week. This week was mainly investigating how much better Frechet was at evaluating the peak difference (but it might be encoded because the diff at the peak is likely largest). Maybe time to reset and understand what the goals of the metrics are to better design them. A little frustrating but we do have metrics by window at least.
