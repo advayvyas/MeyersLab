@@ -1,0 +1,305 @@
+---
+title: "Report 8"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(zoo)
+library(kableExtra)
+library(corrplot)
+library(forcats)
+```
+
+# Introduction
+This week, I will try to improve the time metrics per window and in general and also look at trends per state for magnitude and time metrics.
+
+# Data loading
+## Metric functions
+```{r}
+source("../metric_functions.R")
+source("../graphstat_functions.R")
+source("../write_dtw.R")
+```
+
+## Saved datasets
+```{r, message = FALSE, warning = FALSE}
+hsa_state = read.csv("../hsa_state_inc.csv")
+dtw_results = read_csv("../all_dtw_results.csv")
+hsa_dtw = dtw_results |> left_join(hsa_state, by = join_by(ID == hsa_nci_id)) 
+write_csv(unique(hsa_dtw), "../hsa_vs_state_metrics.csv")
+all_metrics = read_csv("../hsa_vs_state_metrics.csv")
+```
+
+### Signed lag is backwards
+I will rerun the code next week to fix this but for now I will implement something temporary to flip the signs (I did state leads HSA but it should have been HSA leads state).
+```{r}
+all_metrics = all_metrics |>
+  mutate(
+    signed_lag  = -signed_lag
+  )
+```
+
+# Window dataset
+```{r, cache = TRUE, warning = FALSE}
+hsa_unique = hsa_state %>% distinct(hsa_nci_id, state)
+hsa_list = hsa_unique$hsa_nci_id
+
+res = vector("list", length(hsa_list) * length(windows))
+counter = 1
+
+windows = list(
+  w1 = c(1, 50),
+  w2 = c(51, 100),
+  w3 = c(101, Inf)
+)
+
+for (ID in hsa_list) {
+  for (w in names(windows)) {
+    
+    bounds = windows[[w]]
+    
+    out = pivot_wider(
+      dtw_stats(ID, start = bounds[1], end = bounds[2]),
+      names_from = Metric,
+      values_from = Value
+    )
+    
+    out$ID = ID
+    out$window = w
+    
+    res[[counter]] = out
+    counter = counter + 1
+  }
+}
+
+dtw_results_window = do.call(rbind, res)
+```
+
+```{r}
+dtw_results_window$window = factor(as.numeric(sub("w", "", dtw_results_window$window)), levels = c(1, 2, 3))
+dtw_results_window = dtw_results_window %>% rename(peak_window = window)
+dtw_results_window$peak_window = as.numeric(dtw_results_window$peak_window)
+
+glimpse(dtw_results_window)
+```
+
+## Ground truth
+```{r}
+all_metrics_modified = all_metrics |>
+  mutate(week_index = (epi_week + (epi_year - 2022) * 52 - 38),
+    peak_window = case_when(
+      week_index <= 50  ~ 1,
+      week_index <= 100 ~ 2,
+      TRUE              ~ 3
+  ))
+
+peak_centroid = function(x, weeks, q = 0.80) {
+  threshold = quantile(x, q, na.rm = TRUE)
+  mask = x >= threshold & !is.na(x)
+  if (sum(mask) == 0) return(NA_real_)
+  weighted.mean(weeks[mask], x[mask])
+}
+
+truth_peaks =
+  all_metrics_modified |>
+  group_by(ID, state, peak_window) |>
+  summarise(
+    # HSA peak
+    hsa_peak_week     = week_index[which.max(inc_hsa)],
+    hsa_peak_value    = max(inc_hsa, na.rm = TRUE),
+    hsa_centroid      = peak_centroid(inc_hsa, week_index),
+
+    # State peak
+    state_peak_week   = week_index[which.max(inc_state)],
+    state_peak_value  = max(inc_state, na.rm = TRUE),
+    state_centroid    = peak_centroid(inc_state, week_index),
+
+    # Argmax differences (keep for comparison)
+    truth_time_diff     = hsa_peak_week - state_peak_week,
+    truth_time_diff_abs = abs(truth_time_diff),
+
+    # Centroid difference (new)
+    centroid_time_diff     = hsa_centroid - state_centroid,
+    centroid_time_diff_abs = abs(centroid_time_diff),
+
+    truth_mag_ratio = hsa_peak_value / state_peak_value,
+
+    .groups = "drop"
+  )
+
+glimpse(truth_peaks)
+```
+
+
+## DTW metrics by window dataset
+```{r}
+diff_peak_data = truth_peaks %>% left_join(dtw_results_window, by = c("ID", "peak_window"))
+
+glimpse(diff_peak_data)
+```
+
+# Time
+
+```{r, fig.length = 10, fig.width = 10}
+diff_peak_time = diff_peak_data |> filter(!is.na(centroid_time_diff) & !is.na(signed_lag))
+```
+
+```{r}
+timing_cor_table = diff_peak_time |>
+  group_by(peak_window) |>
+  summarise(
+    cor_mean_abs_lag       = cor(truth_time_diff_abs, mean_abs_lag,         use = "complete.obs"),
+    cor_signed_lag         = cor(truth_time_diff,     signed_lag,           use = "complete.obs"),
+    cor_median_lag         = cor(truth_time_diff,     median_lag,           use = "complete.obs"),
+    cor_lag_sd             = cor(truth_time_diff,     lag_sd,               use = "complete.obs"),
+    .groups = "drop"
+  )
+print(timing_cor_table)
+
+timing_cor_table2 = diff_peak_time |>
+  group_by(peak_window) |>
+  summarise(
+    cor_centroid_signed    = cor(centroid_time_diff,     signed_lag,        use = "complete.obs"),
+    cor_centroid_abs       = cor(centroid_time_diff_abs, mean_abs_lag,      use = "complete.obs"),
+    cor_centroid_median    = cor(centroid_time_diff,     median_lag,        use = "complete.obs"),
+    .groups = "drop"
+  )
+print(timing_cor_table2)
+```
+
+
+```{r, fig.height = 6, fig.width = 6, message = FALSE}
+centroid_lm = lm(centroid_time_diff ~ signed_lag * factor(peak_window), 
+                 data = diff_peak_time)
+summary(centroid_lm)
+par(mfrow = c(2,2))
+plot(centroid_lm)
+diff_peak_time$pred = predict(centroid_lm, newdata = diff_peak_time)
+```
+
+```{r, fig.height = 4, fig.width = 8, message = FALSE}
+ggplot(diff_peak_time, aes(x = signed_lag, y = centroid_time_diff, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_line(color = "firebrick", aes(y = pred), lwd = 1.2) +
+  theme_bw() + 
+  facet_wrap(~peak_window) +
+  labs(x = "DTW signed lag",
+       y = "True timing difference (centroid)",
+       title = "Predicted vs. true peak timing difference") +
+  theme(legend.position = "none")
+```
+
+```{r, message = FALSE}
+diff_peak_time_zoom = diff_peak_time |> filter(signed_lag >= -10, signed_lag <= 10,
+                                                centroid_time_diff >= -10, centroid_time_diff <= 10)
+
+centroid_lm_zoom = lm(centroid_time_diff ~ signed_lag * factor(peak_window), 
+                      data = diff_peak_time_zoom)
+
+diff_peak_time_zoom$pred <- predict(centroid_lm_zoom, newdata = diff_peak_time_zoom)
+```
+
+```{r, fig.height = 4, fig.width = 8, message = FALSE}
+ggplot(diff_peak_time_zoom, aes(x = signed_lag, y = centroid_time_diff, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_line(color = "firebrick", aes(y = pred), lwd = 1.2) +
+  theme_bw() + 
+  facet_wrap(~peak_window) +
+  labs(x = "DTW signed lag",
+       y = "True timing difference (centroid)",
+       title = "Predicted vs. true peak timing difference (zoomed)") +
+  theme(legend.position = "none")
+``` 
+
+```{r, fig.height = 4, fig.width = 10, message = FALSE}
+timing_cor_table2 |>
+  select(peak_window, cor_centroid_signed, cor_centroid_abs, cor_centroid_median) |>
+  pivot_longer(-peak_window, names_to = "metric", values_to = "correlation") |>
+  ggplot(aes(x = factor(peak_window), y = correlation, fill = metric)) +
+  geom_col(position = "dodge", color = 'black') +
+  theme_bw() +
+  labs(x = "Peak window", y = "Correlation with centroid time diff",
+       title = "DTW timing metric correlations by window")
+```
+
+# Magnitude
+```{r, warning = FALSE}
+diff_peak_mag = diff_peak_data |> filter(state_peak_value > 0, hsa_peak_value > 0, frechet < 25, truth_mag_ratio < 5) #, dtw_rmse < 5)
+```
+
+```{r, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window", title = "Frechet vs. Truth") 
+```
+
+```{r, fig.length = 6, fig.width = 8}
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) +
+  geom_point(color = 'black', alpha = 0.4) + 
+  geom_smooth(method = 'lm') + theme_bw() + 
+  labs(title = "Frechet vs. Truth") + ylim(0, 5) + xlim(0, 25)
+```
+
+```{r, fig.height = 8, fig.width = 8}
+frechet_lm = lm((truth_mag_ratio) ~ (frechet) * factor(peak_window), data = diff_peak_mag)
+
+summary(frechet_lm)
+par(mfrow = c(2, 2))
+plot(frechet_lm)
+
+diff_peak_mag$pred <- (predict(frechet_lm))
+
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) + 
+  geom_point(alpha= 0.4) +
+  geom_line(color = "firebrick", aes(y = pred), lwd = 1.2) +
+  theme_bw() + facet_wrap(~peak_window) 
+```
+
+```{r, message = FALSE, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = dtw_rmse, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = "lm", aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window", title = "RMSE vs. Truth") 
+```
+
+```{r}
+magnitude_cor_table =
+  diff_peak_mag |>
+  group_by(peak_window) |>
+  summarise(
+    cor_dtw_mae       = cor(truth_mag_ratio, dtw_mae, use = "complete.obs"),
+    cor_dtw_rmse      = cor(truth_mag_ratio, dtw_rmse, use = "complete.obs"),
+    cor_rmse          = cor(truth_mag_ratio, rmse, use = "complete.obs"),
+    cor_amp_ratio     = cor(truth_mag_ratio, amp_ratio, use = "complete.obs"),
+    cor_dtw_amp_ratio = cor(truth_mag_ratio, dtw_amp_ratio, use = "complete.obs"),
+    cor_frechet       = cor(truth_mag_ratio, frechet, use = "complete.obs"),
+    .groups = "drop"
+  )
+
+knitr::kable(magnitude_cor_table)
+```
+
+# Conclusion
+
+
+this is the old conclusion type shi
+
+Time metrics are once again disappointing and might have to rework how they are evaluated by a case-by-case basis to figure out the root issue. I think it just comes down to much noise and I might be more interested in how the top 20% percentile points are shifted and DTW might be a better metric for that region than simply the peak value. Magnitude metrics (Frechet in particular) look excellent. Need to understand how DTW is able to match curves properly (maybe it just moves points forward and backward in time to fit the best, which might be concerning). Added a median to lag, will look through that next week. This week was mainly investigating how much better Frechet was at evaluating the peak difference (but it might be encoded because the diff at the peak is likely largest). Maybe time to reset and understand what the goals of the metrics are to better design them. A little frustrating but we do have metrics by window at least.

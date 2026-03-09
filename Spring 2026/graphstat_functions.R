@@ -66,7 +66,7 @@ dtw_stats = function(hsa_id = 688, start = 1, end = Inf) {
   i = res_dtw$path[,1]
   j = res_dtw$path[,2]
   
-  delta_t = j - i
+  delta_t = i - j
   delta_x = P[i,1] - Q[j,1]
   
   stats_list = list(
