@@ -297,9 +297,73 @@ magnitude_cor_table =
 knitr::kable(magnitude_cor_table)
 ```
 
+# US map visualization
+```{r, fig.height = 10, fig.width = 10}
+us_map = readRDS("../us_map_pop_sf.rds")
+
+lower48 <- setdiff(c(state.name, "District of Columbia"), c("Alaska", "Hawaii"))
+
+diff_peak_map = diff_peak_data |> filter(signed_lag >= -10, signed_lag <= 10, centroid_time_diff >= -10, centroid_time_diff <= 10) |> filter(state_peak_value > 0, hsa_peak_value > 0, frechet < 25, truth_mag_ratio < 5)
+
+# compute per-HSA correlations
+hsa_cors = diff_peak_map |>
+  group_by(ID, state) |>
+  summarise(
+    cor_timing  = cor(signed_lag, centroid_time_diff, use = "complete.obs"),
+    cor_mag     = cor(frechet, truth_mag_ratio,       use = "complete.obs"),
+    .groups = "drop"
+  )
+
+hsa_cors = hsa_cors |>
+  mutate(composite = cor_timing + cor_mag)
+
+us_map_plain = us_map |>
+  sf::st_drop_geometry() |>
+  dplyr::select(-geometry_hsa) |>
+  filter(state %in% lower48)
+
+us_map_cors = us_map |>
+  filter(hsa_nci_id %in% us_map_plain$hsa_nci_id) |>
+  left_join(hsa_cors |> rename(hsa_nci_id = ID), by = c("hsa_nci_id", "state"))
+
+# map 1: timing correlation (signed_lag vs centroid_time_diff)
+timing_map = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = cor_timing), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "magma", direction = -1, na.value = "white",
+                       name = "Correlation", limits = c(-1, 1)) +
+  coord_sf() + theme_void() +
+  labs(title = "Timing: signed lag vs. centroid time diff")
+
+# map 2: magnitude correlation (frechet vs truth_mag_ratio)
+mag_map = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = cor_mag), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "magma", direction = -1, na.value = "white",
+                       name = "Correlation", limits = c(-1, 1)) +
+  coord_sf() + theme_void() +
+  labs(title = "Magnitude: Frechet vs. truth mag ratio")
+
+# added together map
+composite_map = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = composite), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "plasma", na.value = "white",
+                       name = "Composite", limits = c(-2, 2)) +
+  coord_sf() + theme_void() +
+  labs(title = "Composite correlation (timing + magnitude)")
+```
+
+```{r, cache = TRUE, fig.height = 15, fig.width = 10}
+timing_map / mag_map / composite_map
+```
+
+
 # Conclusion
-
-
-this is the old conclusion type shi
-
-Time metrics are once again disappointing and might have to rework how they are evaluated by a case-by-case basis to figure out the root issue. I think it just comes down to much noise and I might be more interested in how the top 20% percentile points are shifted and DTW might be a better metric for that region than simply the peak value. Magnitude metrics (Frechet in particular) look excellent. Need to understand how DTW is able to match curves properly (maybe it just moves points forward and backward in time to fit the best, which might be concerning). Added a median to lag, will look through that next week. This week was mainly investigating how much better Frechet was at evaluating the peak difference (but it might be encoded because the diff at the peak is likely largest). Maybe time to reset and understand what the goals of the metrics are to better design them. A little frustrating but we do have metrics by window at least.
+I got timing metrics to work this time by looking at the correlation of the top 20% of magnitudes (instead of one week peaks) and then using that to see how the signed lag would correlate (DTW lag seems to correlate with truth lag) with centroids of the top 20%. Okay, and they seem to have pretty good correlation which holds even after removing outliers. I then plotted three US maps, one for the lag vs centroid diff correlation, the next for frechet vs mag_ratio correlation, and the last US map as a sum to see which HSAs are consistently agreeing with metrics in both time and magnitude. Next week, I might look at R^2 per window and if there are any variables that explain the composite HSA scores in the map above.
