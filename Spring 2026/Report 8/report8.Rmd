@@ -367,3 +367,5 @@ timing_map / mag_map / composite_map
 
 # Conclusion
 I got timing metrics to work this time by looking at the correlation of the top 20% of magnitudes (instead of one week peaks) and then using that to see how the signed lag would correlate (DTW lag seems to correlate with truth lag) with centroids of the top 20%. Okay, and they seem to have pretty good correlation which holds even after removing outliers. I then plotted three US maps, one for the lag vs centroid diff correlation, the next for frechet vs mag_ratio correlation, and the last US map as a sum to see which HSAs are consistently agreeing with metrics in both time and magnitude. Next week, I might look at R^2 per window and if there are any variables that explain the composite HSA scores in the map above.
+
+maybe also could use cost, look at window 1 in more detail and think about refining, change US map scaling, subset linear regression, filter more strictly, correlation between seasons if lag is consistent or not between states and HSA (do some HSAs always lag, maybe use ground truth and signed_lag), is magnitude ratio always lower or higher than state level across three seasons.
