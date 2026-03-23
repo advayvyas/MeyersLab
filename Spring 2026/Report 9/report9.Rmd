@@ -1,0 +1,543 @@
+---
+title: "Report 8"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(zoo)
+library(kableExtra)
+library(corrplot)
+library(forcats)
+```
+
+# Introduction
+This week, I will look at R^2 per window and if there variables that explain the composite HSA scores. I was thinking about looking at cost, window 1 specifically (maybe refining the weeks of the window), changing the scale of the US map, looking at the correlation between seasons if lag is consistent, and looking at if magnitude is always lower/higher across seasons.
+
+# Data loading
+## Metric functions
+```{r}
+source("../metric_functions.R")
+source("../graphstat_functions.R")
+source("../write_dtw.R")
+```
+
+## Saved datasets
+```{r, message = FALSE, warning = FALSE}
+hsa_state = read.csv("../hsa_state_inc.csv")
+dtw_results = read_csv("../all_dtw_results.csv")
+hsa_dtw = dtw_results |> left_join(hsa_state, by = join_by(ID == hsa_nci_id)) 
+write_csv(unique(hsa_dtw), "../hsa_vs_state_metrics.csv")
+all_metrics = read_csv("../hsa_vs_state_metrics.csv")
+```
+
+### Signed lag is backwards
+I will rerun the code next week to fix this but for now I will implement something temporary to flip the signs (I did state leads HSA but it should have been HSA leads state).
+```{r}
+all_metrics = all_metrics |>
+  mutate(
+    signed_lag  = -signed_lag
+  )
+```
+
+# Window dataset
+```{r, warning = FALSE}
+hsa_unique = hsa_state %>% distinct(hsa_nci_id, state)
+hsa_list = hsa_unique$hsa_nci_id
+
+res = vector("list", length(hsa_list) * length(windows))
+counter = 1
+
+windows = list(
+  w1 = c(1, 50),
+  w2 = c(51, 100),
+  w3 = c(101, Inf)
+)
+
+for (ID in hsa_list) {
+  for (w in names(windows)) {
+    
+    bounds = windows[[w]]
+    
+    out = pivot_wider(
+      dtw_stats(ID, start = bounds[1], end = bounds[2]),
+      names_from = Metric,
+      values_from = Value
+    )
+    
+    out$ID = ID
+    out$window = w
+    
+    res[[counter]] = out
+    counter = counter + 1
+  }
+}
+
+dtw_results_window = do.call(rbind, res)
+```
+
+```{r}
+dtw_results_window$window = factor(as.numeric(sub("w", "", dtw_results_window$window)), levels = c(1, 2, 3))
+dtw_results_window = dtw_results_window %>% rename(peak_window = window)
+dtw_results_window$peak_window = as.numeric(dtw_results_window$peak_window)
+
+glimpse(dtw_results_window)
+```
+
+## Ground truth
+```{r}
+all_metrics_modified = all_metrics |>
+  mutate(week_index = (epi_week + (epi_year - 2022) * 52 - 38),
+    peak_window = case_when(
+      week_index <= 50  ~ 1,
+      week_index <= 100 ~ 2,
+      TRUE              ~ 3
+  ))
+
+peak_centroid = function(x, weeks, q = 0.80) {
+  threshold = quantile(x, q, na.rm = TRUE)
+  mask = x >= threshold & !is.na(x)
+  if (sum(mask) == 0) return(NA_real_)
+  weighted.mean(weeks[mask], x[mask])
+}
+
+truth_peaks =
+  all_metrics_modified |>
+  group_by(ID, state, peak_window) |>
+  summarise(
+    # HSA peak
+    hsa_peak_week     = week_index[which.max(inc_hsa)],
+    hsa_peak_value    = max(inc_hsa, na.rm = TRUE),
+    hsa_centroid      = peak_centroid(inc_hsa, week_index),
+
+    # State peak
+    state_peak_week   = week_index[which.max(inc_state)],
+    state_peak_value  = max(inc_state, na.rm = TRUE),
+    state_centroid    = peak_centroid(inc_state, week_index),
+
+    # Argmax differences (keep for comparison)
+    truth_time_diff     = hsa_peak_week - state_peak_week,
+    truth_time_diff_abs = abs(truth_time_diff),
+
+    # Centroid difference (new)
+    centroid_time_diff     = hsa_centroid - state_centroid,
+    centroid_time_diff_abs = abs(centroid_time_diff),
+
+    truth_mag_ratio = hsa_peak_value / state_peak_value,
+
+    .groups = "drop"
+  )
+
+glimpse(truth_peaks)
+```
+
+
+## DTW metrics by window dataset
+```{r}
+diff_peak_data = truth_peaks %>% left_join(dtw_results_window, by = c("ID", "peak_window"))
+
+glimpse(diff_peak_data)
+```
+
+# Time
+```{r, fig.length = 10, fig.width = 10}
+diff_peak_time = diff_peak_data |> filter(!is.na(centroid_time_diff) & !is.na(signed_lag))
+```
+
+```{r}
+timing_cor_table = diff_peak_time |>
+  group_by(peak_window) |>
+  summarise(
+    cor_mean_abs_lag       = cor(truth_time_diff_abs, mean_abs_lag,         use = "complete.obs"),
+    cor_signed_lag         = cor(truth_time_diff,     signed_lag,           use = "complete.obs"),
+    cor_median_lag         = cor(truth_time_diff,     median_lag,           use = "complete.obs"),
+    cor_lag_sd             = cor(truth_time_diff,     lag_sd,               use = "complete.obs"),
+    .groups = "drop"
+  )
+print(timing_cor_table)
+
+timing_cor_table2 = diff_peak_time |>
+  group_by(peak_window) |>
+  summarise(
+    cor_centroid_signed    = cor(centroid_time_diff,     signed_lag,        use = "complete.obs"),
+    cor_centroid_abs       = cor(centroid_time_diff_abs, mean_abs_lag,      use = "complete.obs"),
+    cor_centroid_median    = cor(centroid_time_diff,     median_lag,        use = "complete.obs"),
+    .groups = "drop"
+  )
+print(timing_cor_table2)
+```
+
+
+```{r, fig.height = 6, fig.width = 6, message = FALSE}
+centroid_lm = lm(centroid_time_diff ~ signed_lag * factor(peak_window), 
+                 data = diff_peak_time)
+summary(centroid_lm)
+par(mfrow = c(2,2))
+plot(centroid_lm)
+diff_peak_time$pred = predict(centroid_lm, newdata = diff_peak_time)
+```
+
+```{r, fig.height = 4, fig.width = 8, message = FALSE}
+ggplot(diff_peak_time, aes(x = signed_lag, y = centroid_time_diff, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_line(color = "firebrick", aes(y = pred), lwd = 1.2) +
+  theme_bw() + 
+  facet_wrap(~peak_window) +
+  labs(x = "DTW signed lag",
+       y = "True timing difference (centroid)",
+       title = "Predicted vs. true peak timing difference") +
+  theme(legend.position = "none")
+```
+
+```{r, message = FALSE}
+diff_peak_time_zoom = diff_peak_time |> filter(signed_lag >= -10, signed_lag <= 10,
+                                                centroid_time_diff >= -10, centroid_time_diff <= 10)
+
+centroid_lm_zoom = lm(centroid_time_diff ~ signed_lag * factor(peak_window), 
+                      data = diff_peak_time_zoom)
+
+diff_peak_time_zoom$pred <- predict(centroid_lm_zoom, newdata = diff_peak_time_zoom)
+```
+
+```{r, fig.height = 4, fig.width = 8, message = FALSE}
+ggplot(diff_peak_time_zoom, aes(x = signed_lag, y = centroid_time_diff, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_line(color = "firebrick", aes(y = pred), lwd = 1.2) +
+  theme_bw() + 
+  facet_wrap(~peak_window) +
+  labs(x = "DTW signed lag",
+       y = "True timing difference (centroid)",
+       title = "Predicted vs. true peak timing difference (zoomed)") +
+  theme(legend.position = "none")
+``` 
+
+```{r, fig.height = 4, fig.width = 10, message = FALSE}
+timing_cor_table2 |>
+  select(peak_window, cor_centroid_signed, cor_centroid_abs, cor_centroid_median) |>
+  pivot_longer(-peak_window, names_to = "metric", values_to = "correlation") |>
+  ggplot(aes(x = factor(peak_window), y = correlation, fill = metric)) +
+  geom_col(position = "dodge", color = 'black') +
+  theme_bw() +
+  labs(x = "Peak window", y = "Correlation with centroid time diff",
+       title = "DTW timing metric correlations by window")
+```
+
+# Magnitude
+```{r, warning = FALSE}
+diff_peak_mag = diff_peak_data |> filter(state_peak_value > 0, hsa_peak_value > 0, frechet < 25, truth_mag_ratio < 5) #, dtw_rmse < 5)
+```
+
+```{r, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = 'lm', aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window", title = "Frechet vs. Truth") 
+```
+
+```{r, fig.length = 6, fig.width = 8}
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) +
+  geom_point(color = 'black', alpha = 0.4) + 
+  geom_smooth(method = 'lm') + theme_bw() + 
+  labs(title = "Frechet vs. Truth") + ylim(0, 5) + xlim(0, 25)
+```
+
+```{r, fig.height = 8, fig.width = 8}
+frechet_lm = lm((truth_mag_ratio) ~ (frechet) * factor(peak_window), data = diff_peak_mag)
+
+summary(frechet_lm)
+par(mfrow = c(2, 2))
+plot(frechet_lm)
+
+diff_peak_mag$pred <- (predict(frechet_lm))
+
+ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) + 
+  geom_point(alpha= 0.4) +
+  geom_line(color = "firebrick", aes(y = pred), lwd = 1.2) +
+  theme_bw() + facet_wrap(~peak_window) 
+```
+
+```{r, message = FALSE, fig.length = 10, fig.width = 10}
+ggplot(diff_peak_mag, aes(x = dtw_rmse, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = 'black') + 
+  geom_smooth(method = "lm", aes(color = as.factor(peak_window))) + facet_wrap(~peak_window) + theme_bw() + 
+  labs(fill = "Peak window", color = "Peak window", title = "RMSE vs. Truth") 
+```
+
+```{r}
+magnitude_cor_table =
+  diff_peak_mag |>
+  group_by(peak_window) |>
+  summarise(
+    cor_dtw_mae       = cor(truth_mag_ratio, dtw_mae, use = "complete.obs"),
+    cor_dtw_rmse      = cor(truth_mag_ratio, dtw_rmse, use = "complete.obs"),
+    cor_rmse          = cor(truth_mag_ratio, rmse, use = "complete.obs"),
+    cor_amp_ratio     = cor(truth_mag_ratio, amp_ratio, use = "complete.obs"),
+    cor_dtw_amp_ratio = cor(truth_mag_ratio, dtw_amp_ratio, use = "complete.obs"),
+    cor_frechet       = cor(truth_mag_ratio, frechet, use = "complete.obs"),
+    .groups = "drop"
+  )
+
+knitr::kable(magnitude_cor_table)
+```
+
+# US map visualization
+```{r, fig.height = 10, fig.width = 10}
+us_map = readRDS("../us_map_pop_sf.rds")
+
+lower48 <- setdiff(c(state.name, "District of Columbia"), c("Alaska", "Hawaii"))
+
+diff_peak_map = diff_peak_data |> filter(signed_lag >= -10, signed_lag <= 10, centroid_time_diff >= -10, centroid_time_diff <= 10) |> filter(state_peak_value > 0, hsa_peak_value > 0, frechet < 25, truth_mag_ratio < 5)
+
+# compute per-HSA correlations
+hsa_cors = diff_peak_map |>
+  group_by(ID, state) |>
+  summarise(
+    cor_timing  = cor(signed_lag, centroid_time_diff, use = "complete.obs"),
+    cor_mag     = cor(frechet, truth_mag_ratio,       use = "complete.obs"),
+    .groups = "drop"
+  )
+
+hsa_cors = hsa_cors |>
+  mutate(composite = cor_timing + cor_mag)
+
+us_map_plain = us_map |>
+  sf::st_drop_geometry() |>
+  dplyr::select(-geometry_hsa) |>
+  filter(state %in% lower48)
+
+us_map_cors = us_map |>
+  filter(hsa_nci_id %in% us_map_plain$hsa_nci_id) |>
+  left_join(hsa_cors |> rename(hsa_nci_id = ID), by = c("hsa_nci_id", "state"))
+
+# map 1: timing correlation (signed_lag vs centroid_time_diff)
+timing_map = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = cor_timing), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "magma", direction = -1, na.value = "white",
+                       name = "Correlation", limits = c(-1, 1)) +
+  coord_sf() + theme_void() +
+  labs(title = "Timing: signed lag vs. centroid time diff")
+
+# map 2: magnitude correlation (frechet vs truth_mag_ratio)
+mag_map = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = cor_mag), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "magma", direction = -1, na.value = "white",
+                       name = "Correlation", limits = c(-1, 1)) +
+  coord_sf() + theme_void() +
+  labs(title = "Magnitude: Frechet vs. truth mag ratio")
+
+# added together map
+composite_map = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = composite), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_viridis_c(option = "plasma", na.value = "white",
+                       name = "Composite", limits = c(-2, 2)) +
+  coord_sf() + theme_void() +
+  labs(title = "Composite correlation (timing + magnitude)")
+```
+
+```{r, fig.height = 15, fig.width = 10}
+timing_map / mag_map / composite_map
+```
+
+# R^2 per window
+```{r}
+timing_r2 = diff_peak_time |>
+  group_by(peak_window) |>
+  summarise(
+    r2_signed_lag    = summary(lm(centroid_time_diff ~ signed_lag))$r.squared,
+    n                = n(),
+    .groups = "drop"
+  )
+print(timing_r2)
+
+# --- 1b. Magnitude R² per window ---
+magnitude_r2 = diff_peak_mag |>
+  group_by(peak_window) |>
+  summarise(
+    r2_frechet       = summary(lm(truth_mag_ratio ~ frechet))$r.squared,
+    n                = n(),
+    .groups = "drop"
+  )
+print(magnitude_r2)
+
+# --- 1c. Plot R² by window for both models ---
+timing_r2_long = timing_r2 |>
+  select(peak_window, starts_with("r2")) |>
+  pivot_longer(-peak_window, names_to = "metric", values_to = "r2") |>
+  mutate(model = "Timing")
+
+magnitude_r2_long = magnitude_r2 |>
+  select(peak_window, starts_with("r2")) |>
+  pivot_longer(-peak_window, names_to = "metric", values_to = "r2") |>
+  mutate(model = "Magnitude")
+
+r2_combined = bind_rows(timing_r2_long, magnitude_r2_long)
+```
+
+```{r}
+ggplot(r2_combined, aes(x = factor(peak_window), y = r2, fill = metric)) +
+  geom_col(position = "dodge", color = "black") +
+  facet_wrap(~model) +
+  theme_bw() +
+  labs(x = "Peak window", y = "R²",
+       title = "R² by window and metric (timing vs. magnitude)",
+       fill = "Metric")
+```
+
+# Lag consistency
+```{r, fig.height = 5, fig.width = 10}
+lag_consistency = diff_peak_time |>
+  select(ID, state, peak_window, signed_lag, truth_time_diff) |>
+  group_by(ID, state) |>
+  summarise(
+    n_windows        = n(),
+    lag_signs        = list(sign(signed_lag)),
+    all_same_sign    = length(unique(sign(signed_lag[!is.na(signed_lag)]))) == 1,
+    mean_signed_lag  = mean(signed_lag, na.rm = TRUE),
+    sd_signed_lag    = sd(signed_lag, na.rm = TRUE),
+    # Is DTW lag sign consistent with ground truth sign?
+    lag_truth_agree  = mean(sign(signed_lag) == sign(truth_time_diff), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+lag_consistency |>
+  count(all_same_sign) |>
+  mutate(pct = n / sum(n) * 100) |>
+  print()
+
+us_map_lag = us_map_cors |>
+  left_join(lag_consistency |> rename(hsa_nci_id = ID) |> select(hsa_nci_id, all_same_sign, mean_signed_lag, lag_truth_agree),
+            by = "hsa_nci_id")
+
+ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_lag), "geometry_hsa"),
+          aes(fill = mean_signed_lag), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_lag), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0,
+                       na.value = "gray90", name = "Mean\nsigned lag") +
+  coord_sf() + theme_void() +
+  labs(title = "Mean signed lag per HSA (negative = HSA leads state)")
+
+lag_wide = diff_peak_time |>
+  select(ID, peak_window, signed_lag) |>
+  pivot_wider(names_from = peak_window, values_from = signed_lag,
+              names_prefix = "lag_w")
+
+cor(lag_wide[, c("lag_w1", "lag_w2", "lag_w3")], use = "pairwise.complete.obs") |>
+  print()
+```
+
+# Magnitude consistency
+```{r, fig.height = 5, fig.width = 10}
+mag_consistency = truth_peaks |>
+  group_by(ID, state) |>
+  summarise(
+    n_windows         = n(),
+    always_above_1    = all(truth_mag_ratio > 1, na.rm = TRUE),
+    always_below_1    = all(truth_mag_ratio < 1, na.rm = TRUE),
+    consistent        = always_above_1 | always_below_1,
+    mean_mag_ratio    = mean(truth_mag_ratio, na.rm = TRUE),
+    sd_mag_ratio      = sd(truth_mag_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+mag_consistency |>
+  count(always_above_1, always_below_1, consistent) |>
+  mutate(pct = n / sum(n) * 100) |>
+  print()
+
+truth_peaks |>
+  left_join(mag_consistency |> select(ID, consistent, always_above_1), by = "ID") |>
+  mutate(direction = case_when(
+    always_above_1  ~ "Always HSA > State",
+    !consistent     ~ "Inconsistent",
+    TRUE            ~ "Always HSA < State"
+  )) |>
+  ggplot(aes(x = factor(peak_window), y = truth_mag_ratio, fill = direction)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.7) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "firebrick") +
+  theme_bw() +
+  labs(x = "Peak window", y = "HSA / State peak ratio",
+       title = "Magnitude ratio by window and cross-season consistency",
+       fill = "Direction")
+
+us_map_mag = us_map_cors |>
+  left_join(mag_consistency |> rename(hsa_nci_id = ID) |> select(hsa_nci_id, mean_mag_ratio, consistent),
+            by = "hsa_nci_id")
+
+ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_mag), "geometry_hsa"),
+          aes(fill = mean_mag_ratio), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_mag), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1,
+                       na.value = "gray90", name = "Mean\nmag ratio") +
+  coord_sf() + theme_void() +
+  labs(title = "Mean HSA/State magnitude ratio (red = HSA peaks higher)")
+```
+
+# Maps with some better color scales
+```{r, fig.height = 15, fig.width = 10}
+timing_map_div = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = cor_timing), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0,
+                       limits = c(-1, 1), na.value = "gray90",
+                       name = "Correlation") +
+  coord_sf() + theme_void() +
+  labs(title = "Timing correlation: signed lag vs. centroid time diff")
+
+mag_map_div = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = cor_mag), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0,
+                       limits = c(-1, 1), na.value = "gray90",
+                       name = "Correlation") +
+  coord_sf() + theme_void() +
+  labs(title = "Magnitude correlation: Frechet vs. truth mag ratio")
+
+composite_map_div = ggplot() +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry_hsa"),
+          aes(fill = composite), color = "gray20") +
+  geom_sf(data = sf::st_set_geometry(sf::st_as_sf(us_map_cors), "geometry"),
+          fill = NA, color = "grey20", linewidth = 0.25) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0,
+                       limits = c(-2, 2), na.value = "gray90",
+                       name = "Composite") +
+  coord_sf() + theme_void() +
+  labs(title = "Composite correlation score (timing + magnitude)")
+
+timing_map_div / mag_map_div / composite_map_div
+```
+
+# Conclusion
+I was able to add some magnitude and lag consistency metrics and some accompnaying plots and correlations along with redone plots and R^2 per window!
