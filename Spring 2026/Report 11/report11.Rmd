@@ -390,3 +390,6 @@ cor_table %>%
 
 # Conclusion
 I'm a little unsure how to interpret some of these US maps but it looks good, I think I will use the large ones in my poster because they look nice and are easy to read.
+
+
+Animation effect below and behind, compare choropleth with real metrics vs trial metric

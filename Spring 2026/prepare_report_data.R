@@ -22,7 +22,7 @@ us_map      = readRDS("us_map_pop_sf.rds")
 message("Computing DTW metrics (this may take a while)...")
 
 windows = list(
-  w1 = c(1,   50),
+  w1 = c(1,   25),
   w2 = c(51,  100),
   w3 = c(101, Inf)
 )
