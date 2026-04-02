@@ -1,0 +1,392 @@
+
+title: "Report 11"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height = 4, fig.width = 4, fig.align = "left",
+                      echo = TRUE, warning = FALSE, message = FALSE,
+                      tidy = TRUE, tidy.opts = list(width.cutoff = 60))
+```
+
+
+
+```{r libraries, echo=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(kableExtra)
+library(sf)
+```
+
+# Introduction
+This week, I was able to add some per-season maps, add some consistency plots, look at the scatter plot by urbanicity quartile, and trim the code file into a separate file for easy use.
+
+# Data Loading
+
+```{r load_cache}
+d = readRDS("../report_data_cache.rds")
+list2env(d, envir = .GlobalEnv)
+
+lower48 = setdiff(c(state.name, "District of Columbia"), c("Alaska", "Hawaii"))
+
+cat("Filtered rows:", nrow(diff_peak_filtered), "\n")
+```
+
+
+
+# Timing
+
+```{r timing_cors}
+diff_peak_filtered %>%
+  group_by(peak_window) %>%
+  summarise(
+    cor_signed_lag      = cor(truth_time_diff,        signed_lag,   use = "complete.obs"),
+    cor_mean_abs_lag    = cor(truth_time_diff_abs,    mean_abs_lag, use = "complete.obs"),
+    cor_centroid_signed = cor(centroid_time_diff,     signed_lag,   use = "complete.obs"),
+    cor_centroid_abs    = cor(centroid_time_diff_abs, mean_abs_lag, use = "complete.obs"),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(digits = 3, caption = "Timing metric correlations by peak window")
+```
+
+```{r timing_scatter, fig.height=4, fig.width=8}
+centroid_lm = lm(centroid_time_diff ~ signed_lag * factor(peak_window),
+                 data = diff_peak_filtered)
+diff_peak_filtered$pred_timing = predict(centroid_lm, newdata = diff_peak_filtered)
+
+ggplot(diff_peak_filtered,
+       aes(x = signed_lag, y = centroid_time_diff, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = "black", alpha = 0.5) +
+  geom_line(aes(y = pred_timing), color = "firebrick", lwd = 1.1) +
+  facet_wrap(~peak_window) +
+  theme_bw() +
+  labs(x = "DTW signed lag", y = "True timing diff (centroid)",
+       title = "Signed lag vs. centroid timing difference by window") +
+  theme(legend.position = "none")
+```
+
+```{r timing_r2}
+diff_peak_filtered %>%
+  group_by(peak_window) %>%
+  summarise(
+    r2 = summary(lm(centroid_time_diff ~ signed_lag))$r.squared,
+    n  = n(),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(digits = 3, caption = "Timing R² by window")
+```
+
+
+
+# Magnitude
+
+```{r mag_cors}
+diff_peak_filtered %>%
+  group_by(peak_window) %>%
+  summarise(
+    cor_frechet       = cor(truth_mag_ratio, frechet,       use = "complete.obs"),
+    cor_dtw_amp_ratio = cor(truth_mag_ratio, dtw_amp_ratio, use = "complete.obs"),
+    cor_amp_ratio     = cor(truth_mag_ratio, amp_ratio,     use = "complete.obs"),
+    cor_dtw_rmse      = cor(truth_mag_ratio, dtw_rmse,      use = "complete.obs"),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(digits = 3, caption = "Magnitude metric correlations by peak window")
+```
+
+```{r mag_scatter, fig.height=4, fig.width=8}
+ggplot(diff_peak_filtered,
+       aes(x = frechet, y = truth_mag_ratio, fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = "black", alpha = 0.5) +
+  geom_smooth(method = "lm", aes(color = as.factor(peak_window)), se = FALSE) +
+  facet_wrap(~peak_window) +
+  theme_bw() +
+  labs(x = "Fréchet distance", y = "HSA / State peak ratio",
+       fill = "Window", color = "Window",
+       title = "Fréchet vs. magnitude ratio by window")
+```
+
+```{r mag_r2}
+diff_peak_filtered %>%
+  group_by(peak_window) %>%
+  summarise(
+    r2 = summary(lm(truth_mag_ratio ~ frechet))$r.squared,
+    n  = n(),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(digits = 3, caption = "Magnitude R² by window")
+```
+
+
+
+# Magnitude Ratio Consistency
+
+```{r mag_consistency, fig.height=5, fig.width=7}
+mag_consistency = truth_peaks %>%
+  filter(state_peak_value > 0, hsa_peak_value > 0,
+         truth_mag_ratio > 0, truth_mag_ratio < 5) %>%
+  group_by(ID, state) %>%
+  mutate(
+    direction = case_when(
+      all(truth_mag_ratio > 1, na.rm = TRUE) ~ "Always HSA > State",
+      all(truth_mag_ratio < 1, na.rm = TRUE) ~ "Always HSA < State",
+      TRUE                                   ~ "Inconsistent"
+    )
+  ) %>%
+  ungroup()
+
+mag_consistency %>%
+  distinct(ID, direction) %>%
+  count(direction) %>%
+  mutate(pct = round(n / sum(n) * 100, 1)) %>%
+  knitr::kable(caption = "HSA magnitude direction consistency")
+
+ggplot(mag_consistency,
+       aes(x = factor(peak_window), y = truth_mag_ratio,
+           group = ID, color = direction)) +
+  geom_line(alpha = 0.25, linewidth = 0.4) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black", lwd = 0.8) +
+  scale_color_manual(values = c("Always HSA > State" = "#d73027",
+                                "Always HSA < State" = "#4575b4",
+                                "Inconsistent"       = "gray60")) +
+  theme_bw() +
+  labs(x = "Peak window", y = "HSA / State peak ratio",
+       title = "Per-HSA magnitude ratio consistency across seasons", color = NULL)
+```
+
+
+
+# Lag Consistency
+
+```{r lag_consistency}
+lag_consistency = diff_peak_filtered %>%
+  group_by(ID, state) %>%
+  summarise(
+    all_same_sign   = length(unique(sign(signed_lag[!is.na(signed_lag)]))) == 1,
+    mean_signed_lag = mean(signed_lag, na.rm = TRUE),
+    lag_truth_agree = mean(sign(signed_lag) == sign(truth_time_diff), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+lag_consistency %>%
+  count(all_same_sign) %>%
+  mutate(pct = round(n / sum(n) * 100, 1)) %>%
+  knitr::kable(caption = "Lag sign consistency across windows")
+
+diff_peak_filtered %>%
+  select(ID, peak_window, signed_lag) %>%
+  pivot_wider(names_from = peak_window, values_from = signed_lag,
+              names_prefix = "lag_w") %>%
+  select(lag_w1, lag_w2, lag_w3) %>%
+  cor(use = "pairwise.complete.obs") %>%
+  round(3) %>%
+  knitr::kable(caption = "Cross-window lag correlations")
+```
+
+```{r, fig.height=5, fig.width=7}
+lag_consistency_plot = diff_peak_filtered %>%
+  group_by(ID, state) %>%
+  mutate(
+    direction = case_when(
+      all(signed_lag > 0, na.rm = TRUE) ~ "Always HSA lags state",
+      all(signed_lag < 0, na.rm = TRUE) ~ "Always HSA leads state",
+      TRUE                              ~ "Inconsistent"
+    )
+  ) %>%
+  ungroup()
+
+lag_consistency_plot %>%
+  distinct(ID, direction) %>%
+  count(direction) %>%
+  mutate(pct = round(n / sum(n) * 100, 1)) %>%
+  knitr::kable(caption = "HSA lag direction consistency")
+
+ggplot(lag_consistency_plot,
+       aes(x = factor(peak_window), y = signed_lag,
+           group = ID, color = direction)) +
+  geom_line(alpha = 0.25, linewidth = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", lwd = 0.8) +
+  scale_color_manual(values = c("Always HSA lags state"  = "#d73027",
+                                "Always HSA leads state" = "#4575b4",
+                                "Inconsistent"           = "gray60")) +
+  theme_bw() +
+  labs(x = "Peak window", y = "DTW signed lag",
+       title = "Per-HSA signed lag consistency across seasons", color = NULL)
+```
+
+
+
+# US Maps
+```{r map_setup}
+win_labels = c(`1` = "Window 1", `2` = "Window 2", `3` = "Window 3")
+
+# Per-window: raw metric averages (correlations would have only 1 row per group)
+hsa_window_vals = diff_peak_filtered %>%
+  group_by(ID, state, peak_window) %>%
+  summarise(
+    mean_signed_lag = mean(signed_lag,      na.rm = TRUE),
+    mean_frechet    = mean(frechet,         na.rm = TRUE),
+    mean_mag_ratio  = mean(truth_mag_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+us_map_window = us_map %>%
+  filter(state %in% lower48) %>%
+  crossing(peak_window = c(1, 2, 3)) %>%
+  left_join(hsa_window_vals %>% rename(hsa_nci_id = ID),
+            by = c("hsa_nci_id", "state", "peak_window"))
+
+# Pooled correlations (3 windows per HSA, so cor() has observations to work with)
+hsa_cors = diff_peak_filtered %>%
+  group_by(ID, state) %>%
+  summarise(
+    cor_timing = cor(signed_lag, centroid_time_diff, use = "complete.obs"),
+    cor_mag    = cor(frechet,    truth_mag_ratio,    use = "complete.obs"),
+    .groups = "drop"
+  ) %>%
+  mutate(composite = cor_timing + cor_mag)
+
+us_map_cors = us_map %>%
+  filter(state %in% lower48) %>%
+  left_join(hsa_cors %>% rename(hsa_nci_id = ID), by = c("hsa_nci_id", "state"))
+
+# Helper
+seasonal_map = function(data, fill_var, title, limits = c(-1, 1)) {
+  ggplot() +
+    geom_sf(data = st_set_geometry(st_as_sf(data), "geometry_hsa"),
+            aes(fill = .data[[fill_var]]), color = "gray20", linewidth = 0.1) +
+    geom_sf(data = st_set_geometry(st_as_sf(data), "geometry"),
+            fill = NA, color = "grey20", linewidth = 0.25) +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0,
+                         limits = limits, na.value = "gray90", name = "Value") +
+    facet_wrap(~peak_window, ncol = 1,
+               labeller = labeller(peak_window = win_labels)) +
+    coord_sf() + theme_void() + labs(title = title)
+}
+```
+
+```{r map_timing, fig.height=12, fig.width=8}
+seasonal_map(us_map_window, "mean_signed_lag",
+             "Mean signed lag by season (negative = HSA leads state)")
+```
+
+```{r map_mag, fig.height=12, fig.width=8}
+seasonal_map(us_map_window, "mean_mag_ratio",
+             "Mean HSA / State magnitude ratio by season",
+             limits = c(0, 3))
+```
+
+```{r map_frechet, fig.height=12, fig.width=8}
+seasonal_map(us_map_window, "mean_frechet",
+             "Mean Fréchet distance by season",
+             limits = c(0, 25))
+```
+
+```{r map_lag, fig.height=5, fig.width=10}
+us_map_cors %>%
+  left_join(
+    lag_consistency %>% rename(hsa_nci_id = ID) %>% select(hsa_nci_id, mean_signed_lag),
+    by = "hsa_nci_id"
+  ) %>%
+  { ggplot() +
+      geom_sf(data = st_set_geometry(st_as_sf(.), "geometry_hsa"),
+              aes(fill = mean_signed_lag), color = "gray20", linewidth = 0.1) +
+      geom_sf(data = st_set_geometry(st_as_sf(.), "geometry"),
+              fill = NA, color = "grey20", linewidth = 0.25) +
+      scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0,
+                           na.value = "gray90", name = "Mean\nsigned lag") +
+      coord_sf() + theme_void() +
+      labs(title = "Mean signed lag per HSA (pooled, negative = HSA leads state)") }
+```
+
+```{r map_mag_all, fig.height=5, fig.width=10}
+us_map_cors %>%
+  left_join(
+    diff_peak_filtered %>%
+      group_by(ID, state) %>%
+      summarise(mean_mag_ratio = mean(truth_mag_ratio, na.rm = TRUE), .groups = "drop") %>%
+      rename(hsa_nci_id = ID),
+    by = "hsa_nci_id"
+  ) %>%
+  { ggplot() +
+      geom_sf(data = st_set_geometry(st_as_sf(.), "geometry_hsa"),
+              aes(fill = mean_mag_ratio), color = "gray20", linewidth = 0.1) +
+      geom_sf(data = st_set_geometry(st_as_sf(.), "geometry"),
+              fill = NA, color = "grey20", linewidth = 0.25) +
+      scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1,
+                           limits = c(0.5, 2), oob = scales::squish,
+                           na.value = "gray90", name = "Mean\nmag ratio")  +
+      coord_sf() + theme_void() +
+      labs(title = "Mean HSA / State magnitude ratio per HSA (pooled, red = HSA peaks higher)") }
+```
+
+# HSA Characteristics vs. Correlation Scores
+
+```{r hsa_char_setup}
+cor_table = us_map_cors %>%
+  st_drop_geometry() %>%
+  select(-geometry_hsa, -geometry_county) %>%
+  mutate(area_ratio = area_km2_hsa / area_km2_state) %>%
+  distinct(hsa_nci_id, .keep_all = TRUE) %>%
+  select(cor_timing, cor_mag, composite,
+         pct_urban, pop_ratio, log_density_hsa, area_ratio) %>%
+  mutate(log_pop_ratio  = log(pop_ratio  + 1e-6),
+         log_area_ratio = log(area_ratio + 1e-6)) %>%
+  select(-pop_ratio, -area_ratio)
+```
+
+```{r char_cor_table}
+cor(cor_table, use = "pairwise.complete.obs")[
+  c("cor_timing", "cor_mag", "composite"),
+  c("pct_urban", "log_density_hsa", "log_pop_ratio", "log_area_ratio")
+] %>%
+  round(3) %>%
+  knitr::kable(caption = "Correlation of HSA characteristics with correlation scores")
+```
+
+```{r classified_scatter, fig.height=8, fig.width=10}
+predictor_labels = c(pct_urban       = "% Urban",
+                     log_pop_ratio   = "log(Pop ratio)",
+                     log_density_hsa = "log(HSA density)",
+                     log_area_ratio  = "log(Area ratio)")
+
+outcome_labels = c(cor_timing = "Timing correlation",
+                   cor_mag    = "Magnitude correlation",
+                   composite  = "Composite")
+
+cor_table %>%
+  mutate(
+    urban_class = cut(
+      pct_urban,
+      breaks = quantile(pct_urban, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE),
+      labels = c("Q1 Rural", "Q2 Low-Urban", "Q3 Urban", "Q4 High-Urban"),
+      include.lowest = TRUE
+    )
+  ) %>%
+  pivot_longer(c(pct_urban, log_pop_ratio, log_density_hsa, log_area_ratio),
+               names_to = "predictor", values_to = "predictor_value") %>%
+  pivot_longer(c(cor_timing, cor_mag, composite),
+               names_to = "outcome", values_to = "outcome_value") %>%
+  ggplot(aes(x = predictor_value, y = outcome_value, color = urban_class)) +
+  geom_point(alpha = 0.35, size = 0.8) +
+  facet_grid(outcome ~ predictor, scales = "free_x",
+             labeller = labeller(predictor = predictor_labels,
+                                 outcome   = outcome_labels)) +
+  scale_color_brewer(palette = "RdYlBu", direction = -1, na.value = "gray80") +
+  theme_bw() +
+  labs(x = "Predictor value", y = "Correlation score",
+       title = "HSA correlation scores vs. characteristics, by urbanicity quartile",
+       color = "Urban class")
+```
+
+
+
+# Conclusion
+I'm a little unsure how to interpret some of these US maps but it looks good, I think I will use the large ones in my poster because they look nice and are easy to read.
