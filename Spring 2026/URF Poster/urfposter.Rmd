@@ -1,0 +1,239 @@
+
+title: "Report 11"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height = 4, fig.width = 4, fig.align = "left",
+                      echo = TRUE, warning = FALSE, message = FALSE,
+                      tidy = TRUE, tidy.opts = list(width.cutoff = 60))
+```
+
+
+
+```{r libraries, echo=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(kableExtra)
+library(sf)
+```
+
+# Introduction
+This week, I was able to add some per-season maps, add some consistency plots, look at the scatter plot by urbanicity quartile, and trim the code file into a separate file for easy use.
+
+# Data Loading
+
+```{r load_cache}
+d = readRDS("../report_data_cache.rds")
+list2env(d, envir = .GlobalEnv)
+
+lower48 = setdiff(c(state.name, "District of Columbia"), c("Alaska", "Hawaii"))
+
+cat("Filtered rows:", nrow(diff_peak_filtered), "\n")
+
+poster_theme =
+  theme(
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 16),
+    legend.title = element_text(size = 18),
+    strip.text = element_text(size = 18), # for facets
+    plot.margin = margin(10, 10, 10, 40)
+  )
+```
+
+# Time
+```{r timing_scatter, fig.height=6, fig.width=12}
+diff_peak_time = diff_peak_data |>
+    filter(!is.na(centroid_time_diff) & !is.na(signed_lag))
+
+diff_peak_time_zoom = diff_peak_time |>
+    filter(signed_lag >= -10, signed_lag <= 10, centroid_time_diff >=
+        -10, centroid_time_diff <= 10)
+
+centroid_lm_zoom = lm(centroid_time_diff ~ signed_lag * factor(peak_window),
+    data = diff_peak_time_zoom)
+
+diff_peak_time_zoom$pred <- predict(centroid_lm_zoom, newdata = diff_peak_time_zoom)
+
+timing = ggplot(diff_peak_time_zoom, aes(x = signed_lag, y = centroid_time_diff,
+    fill = as.factor(peak_window))) + geom_point(pch = 21, color = "black", size = 2, stroke = 0.8) +
+    geom_line(color = "black", aes(y = pred), lwd = 1.2) +
+    theme_bw() + facet_wrap(~peak_window, 
+        labeller = labeller(peak_window = c("1" = "Window 1", "2" = "Window 2", "3" = "Window 3"))) + 
+    labs(x = "DTW signed lag", y = "True timing lag (centroid)") + 
+    poster_theme + theme(legend.position = "none")
+
+ggsave("timing.png", dpi = 600, width = 12, height = 6)
+```
+
+# Magnitude
+
+```{r mag_scatter, fig.height=6, fig.width=12}
+diff_peak_mag = diff_peak_data |>
+    filter(state_peak_value > 0, hsa_peak_value > 0, frechet <
+        25, truth_mag_ratio < 5)  #, dtw_rmse < 5)
+
+mag = ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) +
+    geom_point(aes(fill = as.factor(peak_window)), pch = 21, color = "black", size = 3, stroke = 0.8) + 
+    geom_smooth(method = "lm", color = 'black', lwd=1.2, se = FALSE) + 
+    facet_wrap(~peak_window,
+        labeller = labeller(peak_window = c("1" = "Window 1", "2" = "Window 2", "3" = "Window 3"))) +
+    theme_bw() + 
+    labs(x = "Fréchet distance", y = "True magnitude ratio",
+        fill = "Peak window", color = "Peak window") + 
+    poster_theme + 
+    theme(legend.position = "none")
+
+ggsave("mag.png", dpi = 600, width = 12, height = 6)
+```
+
+# Local Texas comparisons
+```{r}
+hsa_state = read.csv("../hsa_state_inc.csv")
+source("../metric_functions.R")
+source("../graphstat_functions.R")
+source("../write_dtw.R")
+```
+
+```{r, fig.width = 10, fig.height = 10}
+hsa_id = 405
+hsa = hsa_state[hsa_state$hsa_nci_id == hsa_id, ]
+
+P = as.matrix(hsa$inc_hsa)
+Q = as.matrix(hsa$inc_state)
+
+res_dtw = dtw_distance(P, Q)
+
+res = discrete_frechet(P, Q)
+
+
+# dtw adjusted
+P_warped = rep(NA, length(Q))
+i = res_dtw$path[,1]
+j = res_dtw$path[,2]
+P_warped[j] = P[i]
+#P_warped = na.approx(P_warped, rule = 2)
+
+df_plot = data.frame(
+  index = seq_len(length(Q)),
+  HSA_aligned = P_warped,
+  State = Q
+)
+
+normal = ggplot(hsa) +
+  geom_line(linewidth = 1, aes(x = seq_len(148), y = inc_hsa, color = "HSA")) +
+  geom_line(linewidth = 1, aes(x = seq_len(148), y = inc_state, color = "State")) +
+  labs(
+    x = "Weeks (since 2022 Week 39)",
+    y = "% of ED visits",
+    title = paste0("Local vs. State (Amarillo)")
+  ) +
+  theme_minimal() +
+  poster_theme +
+  theme(plot.title = element_text(size = 22, face = "bold")) +
+  scale_color_manual(name = "Legend", values = c(HSA = "blue", State = "red"))
+
+warped = ggplot(df_plot) +
+  geom_line(aes(x = index, y = HSA_aligned, color = "HSA"), linewidth = 1) +
+  geom_line(aes(x = index, y = State, color = "State"), linewidth = 1) +
+  labs(
+    x = "Weeks (since 2022 Week 39)",
+    y = "% of ED visits",
+    title = paste0("DTW-warped Local vs. State (Amarillo)")
+  ) +
+  theme_minimal() +
+  poster_theme +
+  theme(plot.title = element_text(size = 22, face = "bold")) +
+  scale_color_manual(name = "Legend", values = c("HSA" = "blue", State = "red"))
+
+(normal / warped)
+```
+
+```{r}
+ggsave("amarillo.png", dpi = 300, width = 10, height = 10)
+```
+
+# US Maps
+```{r map_setup}
+win_labels = c(`1` = "Window 1", `2` = "Window 2", `3` = "Window 3")
+
+# Per-window: raw metric averages (correlations would have only 1 row per group)
+hsa_window_vals = diff_peak_filtered %>%
+  group_by(ID, state, peak_window) %>%
+  summarise(
+    mean_signed_lag = mean(signed_lag,      na.rm = TRUE),
+    mean_frechet    = mean(frechet,         na.rm = TRUE),
+    mean_mag_ratio  = mean(truth_mag_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+us_map_window = us_map %>%
+  filter(state %in% lower48) %>%
+  crossing(peak_window = c(1, 2, 3)) %>%
+  left_join(hsa_window_vals %>% rename(hsa_nci_id = ID),
+            by = c("hsa_nci_id", "state", "peak_window"))
+
+seasonal_map = function(data, fill_var, title, limits, fill_scale) {
+  ggplot() +
+    geom_sf(data = st_set_geometry(st_as_sf(data), "geometry_hsa"),
+            aes(fill = .data[[fill_var]]), color = "gray20", linewidth = 0.1) +
+    geom_sf(data = st_set_geometry(st_as_sf(data), "geometry"),
+            fill = NA, color = "grey20", linewidth = 0.25) +
+    fill_scale +
+    facet_wrap(~peak_window, ncol = 1,
+               labeller = labeller(peak_window = win_labels)) +
+    coord_sf() + theme_void() +
+    theme(
+      strip.text = element_text(size = 20, face = "bold", margin = margin(b = 6)),
+      legend.title = element_text(size = 14),
+      legend.text = element_text(size = 12),
+      legend.key.width = unit(0.7, "cm"),
+      legend.key.height = unit(0.4, "cm"),
+      legend.position = "right",
+      plot.margin = margin(5, 5, 5, 5)
+    )
+}
+```
+
+```{r map_timing, fig.height=12, fig.width=8}
+seasonal_map(
+  us_map_window, "mean_signed_lag",
+  title = NULL,
+  limits = c(-1, 1),
+  fill_scale = scale_fill_gradient2(
+    low = "blue", mid = "white", high = "red", midpoint = 0,
+    limits = c(-1, 1), oob = scales::squish,
+    na.value = "gray90", name = "Signed lag (days)"
+  )
+)
+```
+
+```{r}
+ggsave("timingmap.png", dpi = 300, width = 8, height = 12)
+```
+
+```{r map_frechet, fig.height=12, fig.width=8}
+seasonal_map(
+  us_map_window, "mean_frechet",
+  title = NULL,
+  limits = c(0, 25),
+  fill_scale = scale_fill_viridis_c(
+    option = "mako", direction = -1,
+    limits = c(0, 25), oob = scales::squish,
+    na.value = "gray90", name = "Fréchet distance"
+  )
+)
+```
+
+```{r}
+ggsave("frechetmap.png", dpi = 300, width = 8, height = 12)
+```
