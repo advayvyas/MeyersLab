@@ -1,5 +1,5 @@
 ---
-title: "Report 4"
+title: "Report 12"
 author: "Advay Vyas"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
@@ -114,7 +114,9 @@ p_lag = ggplot() +
   ) +
   transition_states(week_index, transition_length = 1, state_length = 2) +
   ease_aes("linear")
+```
 
+```{r}
 animate(
   p_lag,
   nframes  = n_distinct(weekly_map_data$week_index),
