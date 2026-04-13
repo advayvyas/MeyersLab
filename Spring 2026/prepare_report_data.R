@@ -6,21 +6,20 @@
 library(dplyr)
 library(tidyverse)
 library(sf)
-
 source("metric_functions.R")
 source("graphstat_functions.R")
 source("write_dtw.R")
 
-# Raw data 
+# ── Raw data ──────────────────────────────────────────────────────────────────
 message("Loading raw data...")
-
 hsa_state   = read.csv("hsa_state_inc.csv")
 all_metrics = read_csv("hsa_vs_state_metrics.csv")
 us_map      = readRDS("us_map_pop_sf.rds")
 
-# DTW metrics by window
-message("Computing DTW metrics (this may take a while)...")
+lower48 = setdiff(state.name, c("Alaska", "Hawaii"))
 
+# ── DTW metrics by window ─────────────────────────────────────────────────────
+message("Computing DTW metrics (this may take a while)...")
 windows = list(
   w1 = c(1,   25),
   w2 = c(51,  100),
@@ -52,7 +51,7 @@ dtw_results_window = do.call(rbind, res) %>%
   mutate(peak_window = as.numeric(sub("w", "", window))) %>%
   select(-window)
 
-# Ground truth peaks
+# ── Ground truth peaks ────────────────────────────────────────────────────────
 message("Computing ground truth peaks...")
 
 peak_centroid = function(x, weeks, q = 0.80) {
@@ -89,7 +88,7 @@ truth_peaks = all_metrics_modified %>%
     .groups = "drop"
   )
 
-# Join and unified filter
+# ── Join and unified filter ───────────────────────────────────────────────────
 message("Joining and filtering...")
 
 diff_peak_data = truth_peaks %>%
@@ -110,16 +109,59 @@ diff_peak_filtered = diff_peak_data %>%
 
 message(sprintf("Rows before filter: %d | after: %d", nrow(diff_peak_data), nrow(diff_peak_filtered)))
 
-# Save
+# ── Weekly animation data ─────────────────────────────────────────────────────
+message("Computing weekly animation data...")
+
+# HSAs that passed the peak-level filters
+valid_hsas = diff_peak_filtered %>%
+  distinct(ID, state, peak_window)
+
+# Week-level metrics: magnitude ratio + cumulative fraction lead/lag
+weekly_map_data = all_metrics_modified %>%
+  filter(!is.na(inc_hsa), !is.na(inc_state), inc_state > 0, inc_hsa > 0) %>%
+  inner_join(valid_hsas, by = c("ID", "state", "peak_window")) %>%
+  group_by(ID, state, peak_window) %>%
+  arrange(week_index, .by_group = TRUE) %>%
+  mutate(
+    weekly_mag_ratio = inc_hsa / inc_state,
+    cumfrac_hsa      = cumsum(inc_hsa)   / sum(inc_hsa,   na.rm = TRUE),
+    cumfrac_state    = cumsum(inc_state) / sum(inc_state, na.rm = TRUE),
+    lead_lag         = cumfrac_hsa - cumfrac_state
+  ) %>%
+  ungroup() %>%
+  select(ID, state, peak_window, week_index,
+         inc_hsa, inc_state,
+         weekly_mag_ratio, cumfrac_hsa, cumfrac_state, lead_lag)
+
+# Join to map geometry (HSA + state outlines)
+# Keep geometry columns in the sf object; st_set_geometry() called at plot time
+us_map_weekly = us_map %>%
+  filter(state %in% lower48) %>%
+  left_join(
+    weekly_map_data %>% rename(hsa_nci_id = ID),
+    by = c("hsa_nci_id", "state")
+  )
+
+message(sprintf(
+  "Weekly animation rows: %d | unique weeks: %d | unique HSAs: %d",
+  nrow(weekly_map_data),
+  n_distinct(weekly_map_data$week_index),
+  n_distinct(weekly_map_data$ID)
+))
+
+# ── Save ──────────────────────────────────────────────────────────────────────
 message("Saving cache...")
 
 saveRDS(
   list(
     dtw_results_window = dtw_results_window,
+    all_metrics_modified = all_metrics_modified,
     truth_peaks        = truth_peaks,
     diff_peak_data     = diff_peak_data,
     diff_peak_filtered = diff_peak_filtered,
-    us_map             = us_map
+    us_map             = us_map,
+    weekly_map_data    = weekly_map_data
+    #us_map_weekly      = us_map_weekly
   ),
   "report_data_cache.rds"
 )
