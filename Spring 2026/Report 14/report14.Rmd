@@ -48,7 +48,7 @@ colnames(prob_results_window)
 ```
 
 # Probabilistic versions of metrics
-```{r, fig.height=8, fig.width=6}
+```{r, fig.height=4, fig.width=7}
 comparison = dtw_results_window %>%
   inner_join(prob_results_window, by = c("ID", "peak_window"))
 
