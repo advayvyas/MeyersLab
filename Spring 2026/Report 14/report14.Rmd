@@ -1,0 +1,189 @@
+---
+title: "Report 14"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(zoo)
+library(kableExtra)
+library(corrplot)
+```
+
+# Introduction
+This week, I want to investigate probabilistic DTW more, I think Frechet might be cooked. Also, did my semester recap presentation. I'll start confidence intervals and more rigorous stuff in the summer!
+```{r}
+d = readRDS("../report_data_cache.rds")
+list2env(d, envir = .GlobalEnv)
+
+lower48 = setdiff(c(state.name, "District of Columbia"), c("Alaska", "Hawaii"))
+
+poster_theme =
+  theme(
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 16),
+    legend.title = element_text(size = 18),
+    strip.text = element_text(size = 18), # for facets
+    plot.margin = margin(10, 10, 10, 40)
+  )
+
+colnames(prob_results_window)
+```
+
+# Probabilistic versions of metrics
+```{r, fig.height=8, fig.width=6}
+comparison = dtw_results_window %>%
+  inner_join(prob_results_window, by = c("ID", "peak_window"))
+
+ggplot(comparison, aes(x = signed_lag, y = mean_lag)) +
+  geom_point(alpha = 0.4, size = 0.9) +
+  facet_wrap(~ peak_window, labeller = labeller(peak_window = c(
+    "1" = "2022/23",
+    "2" = "2023/24",
+    "3" = "2024/25"
+  ))) +
+  labs(
+    x = "Signed Lag (DTW)",
+    y = "Mean Lag (Soft-DTW)",
+    title = "Deterministic vs. Probabilistic Lag by Season"
+  ) +
+  theme_minimal() + ylim(c(-10, 10))
+```
+
+```{r}
+metrics = data.frame(
+  Metric = c(
+    "soft_dtw_distance",
+    "mean_lag",
+    "median_lag",
+    "sd_lag",
+    "mean_abs_lag",
+    "peak_region_lag",
+    "rmse"
+  ),
+  Type = c(
+    "Dissimilarity",
+    "Timing", "Timing", "Timing", "Timing", "Timing",
+    "Magnitude"
+  ),
+  Description = c(
+    "Overall curve dissimilarity under soft alignment. Penalizes both timing and magnitude differences but allows elastic warping so that two curves with the same shape but shifted peaks score lower than RMSE would suggest.",
+    "Average signed timing offset across all weeks. Positive = HSA leads the state; negative = HSA lags. Analogous to signed_lag but derived from the full curve alignment rather than peak-to-peak difference.",
+    "Median of the per-week lag profile. More robust than mean_lag to outlier weeks near the trough pulling the average.",
+    "Standard deviation of the per-week lag profile. High sd_lag with low mean_lag suggests the HSA and state cross over in timing across the season rather than maintaining a consistent offset.",
+    "Mean of |lag(i)| across all weeks. Captures total temporal displacement without sign cancellation which is useful when displacement direction varies across the season.",
+    "Mean signed lag restricted to weeks where HSA incidence >= 75th percentile. Focuses the timing signal on the epidemic peak rather than averaging over baseline and tail.",
+    "Root mean squared error between raw HSA and state incidence with no alignment. Baseline magnitude metric assuming perfect temporal alignment."
+  ),
+  Calculation = c(
+    "dtwclust::sdtw(P, Q, gamma)",
+    "mean(warp(i) - i) over all i",
+    "median(warp(i) - i) over all i",
+    "sd(warp(i) - i) over all i",
+    "mean(|warp(i) - i|) over all i",
+    "mean(lag(i)) for i where P[i] >= quantile(P, 0.75)",
+    "sqrt(mean((P - Q)^2))"
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(metrics)
+```
+
+# Time 
+```{r, fig.height=10, fig.width=12}
+diff_peak_time = diff_peak_data |>
+    filter(!is.na(centroid_time_diff) & !is.na(signed_lag))
+
+diff_peak_time_zoom = diff_peak_time |>
+    filter(signed_lag >= -10, signed_lag <= 10, centroid_time_diff >=
+        -10, centroid_time_diff <= 10)
+
+centroid_lm_zoom = lm(centroid_time_diff ~ signed_lag * factor(peak_window),
+    data = diff_peak_time_zoom)
+
+diff_peak_time_zoom$pred <- predict(centroid_lm_zoom, newdata = diff_peak_time_zoom)
+
+timing = ggplot(diff_peak_time_zoom, aes(x = signed_lag, y = centroid_time_diff,
+    fill = as.factor(peak_window))) + geom_point(pch = 21, color = "black", size = 2, stroke = 0.8) +
+    geom_line(color = "black", aes(y = pred), lwd = 1.2) +
+    theme_bw() + facet_wrap(~peak_window, 
+        labeller = labeller(peak_window = c("1" = "2022/23", "2" = "2023/24", "3" = "2024/25"))) +
+    labs(x = "DTW signed lag", y = "True timing lag (centroid)") + 
+    poster_theme + theme(legend.position = "none")
+
+prob_time = diff_peak_data |>
+  filter(!is.na(centroid_time_diff) & !is.na(mean_lag))
+
+prob_time_zoom = prob_time |>
+  filter(mean_lag >= -10, mean_lag <= 10,
+         centroid_time_diff >= -10, centroid_time_diff <= 10)
+
+prob_timing_lm = lm(centroid_time_diff ~ mean_lag * factor(peak_window),
+                    data = prob_time_zoom)
+prob_time_zoom$pred = predict(prob_timing_lm, newdata = prob_time_zoom)
+
+prob_timing = ggplot(prob_time_zoom, aes(x = mean_lag, y = centroid_time_diff,
+                                          fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = "black", size = 2, stroke = 0.8) +
+  geom_line(aes(y = pred), color = "black", lwd = 1.2) +
+  facet_wrap(~ peak_window,
+             labeller = labeller(peak_window = c(
+               "1" = "2022/23", "2" = "2023/24", "3" = "2024/25"))) +
+  labs(x = "Soft-DTW mean lag", y = "True timing lag (centroid)") +
+  theme_bw() + poster_theme + theme(legend.position = "none")
+
+prob_timing / timing
+```
+
+# Magnitude
+```{r, fig.height=10, fig.width=12}
+prob_mag = diff_peak_data |>
+  filter(state_peak_value > 0, hsa_peak_value > 0,
+         soft_dtw_distance < 25, truth_mag_ratio < 5)
+
+prob_magnitude = ggplot(prob_mag, aes(x = soft_dtw_distance, y = truth_mag_ratio,
+                                       fill = as.factor(peak_window))) +
+  geom_point(pch = 21, color = "black", size = 3, stroke = 0.8) +
+  geom_smooth(method = "lm", color = "black", lwd = 1.2, se = FALSE) +
+  facet_wrap(~ peak_window,
+             labeller = labeller(peak_window = c(
+               "1" = "2022/23", "2" = "2023/24", "3" = "2024/25"))) +
+  labs(x = "Soft-DTW distance", y = "True magnitude ratio") +
+  theme_bw() + poster_theme + theme(legend.position = "none")
+
+diff_peak_mag = diff_peak_data |>
+    filter(state_peak_value > 0, hsa_peak_value > 0, frechet <
+        25, truth_mag_ratio < 5)  #, dtw_rmse < 5)
+
+mag = ggplot(diff_peak_mag, aes(x = frechet, y = truth_mag_ratio)) +
+    geom_point(aes(fill = as.factor(peak_window)), pch = 21, color = "black", size = 3, stroke = 0.8) + 
+    geom_smooth(method = "lm", color = 'black', lwd=1.2, se = FALSE) + 
+    facet_wrap(~peak_window,
+        labeller = labeller(peak_window = c("1" = "2022/23", "2" = "2023/24", "3" = "2024/25"))) +
+    theme_bw() + 
+    labs(x = "Fréchet distance", y = "True magnitude ratio",
+        fill = "Peak window", color = "Peak window") + 
+    poster_theme + 
+    theme(legend.position = "none")
+
+prob_magnitude / mag
+```
+# Conclusion

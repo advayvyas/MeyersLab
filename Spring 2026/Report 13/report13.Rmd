@@ -1,0 +1,201 @@
+---
+title: "Report 13"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=4, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(zoo)
+library(kableExtra)
+library(corrplot)
+```
+
+# Introduction
+This week, I attempted to run the animations from last week, got ready for my URF poster presentation, looking at how to make these metrics probabilistic, and then looking at ways to get more defined metrics for lag that might be more useful than signed_lag from DTW. 
+
+```{r}
+d = readRDS("../report_data_cache.rds")
+list2env(d, envir = .GlobalEnv)
+
+lower48 = setdiff(c(state.name, "District of Columbia"), c("Alaska", "Hawaii"))
+
+source("../metric_functions_prob.R")
+source("../write_prob.R")
+
+hsa_state = read.csv("../hsa_state_inc.csv")
+```
+
+```{r}
+#write_prob_results()
+```
+
+The analysis uses several metrics to evaluate alignment between state and HSA time series in terms of timing, magnitude, and shape. The signed lag, mean absolute lag, and median lag measure the direction and size of temporal shifts, while lag_sd captures uncertainty in alignment across plausible paths. Error is assessed using RMSE as a baseline without alignment, and prob_rmse and prob_mae, which account for flexible, probabilistic alignment. Shape similarity is measured by the mean Fréchet distance, with sd_frechet indicating its stability across sampled alignments. Finally, soft-DTW provides a smoothed alignment-based distance. Together, these metrics capture both alignment quality and the uncertainty inherent in matching real-world time series.
+
+# Probabilistic versions of metrics
+```{r}
+det = read.csv("../all_DTW_results.csv")
+prob = read.csv("../all_prob_results.csv")
+```
+
+```{r}
+det_clean = det %>%
+  group_by(ID) %>%
+  summarise(across(everything(), mean, na.rm = TRUE))
+
+df = det_clean %>%
+  inner_join(prob, by = "ID")
+
+ggplot(df, aes(x = signed_lag.x, y = signed_lag.y)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    x = "Deterministic Lag (DTW)",
+    y = "Probabilistic Lag (Fréchet)",
+    title = "Lag Comparison: Deterministic vs Probabilistic"
+  )
+```
+
+```{r}
+ggplot(df, aes(x = lag_sd.y, y = prob_rmse)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(se = FALSE, method = "lm") +
+  labs(
+    x = "Lag Uncertainty (SD)",
+    y = "Alignment Error (RMSE)",
+    title = "Does Uncertain Timing Lead to Worse Fit?"
+  )
+```
+
+```{r}
+ggplot(df, aes(x = dtw_rmse, y = prob_rmse)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    x = "DTW RMSE",
+    y = "Probabilistic RMSE",
+    title = "Error Comparison"
+  )
+```
+
+```{r}
+ggplot(df, aes(x = mean_frechet, y = sd_frechet)) +
+  geom_point(alpha = 0.6) +
+  labs(
+    x = "Mean Fréchet Distance",
+    y = "Fréchet Uncertainty (SD)",
+    title = "Stability of Curve Matching"
+  )
+```
+
+```{r}
+ggplot(df, aes(x = lag_sd.y)) +
+  geom_histogram(bins = 30) +
+  labs(
+    title = "Distribution of Lag Uncertainty Across HSAs"
+  )
+```
+
+# Maps side-by-side
+```{r}
+# win_labels = c("1" = "2022/23", "2" = "2023/24", "3" = "2024/25")
+# 
+# # Per-window: raw metric averages (correlations would have only 1 row per group)
+# hsa_window_vals = diff_peak_filtered %>%
+#   group_by(ID, state, peak_window) %>%
+#   summarise(
+#     mean_signed_lag = mean(signed_lag,      na.rm = TRUE),
+#     mean_frechet    = mean(frechet,         na.rm = TRUE),
+#     mean_mag_ratio  = mean(truth_mag_ratio, na.rm = TRUE),
+#     .groups = "drop"
+#   )
+# 
+# us_map_window = us_map %>%
+#   filter(state %in% lower48) %>%
+#   crossing(peak_window = c(1, 2, 3)) %>%
+#   left_join(hsa_window_vals %>% rename(hsa_nci_id = ID),
+#             by = c("hsa_nci_id", "state", "peak_window"))
+# 
+# seasonal_map = function(data, fill_var, title, limits, fill_scale) {
+#   ggplot() +
+#     geom_sf(data = st_set_geometry(st_as_sf(data), "geometry_hsa"),
+#             aes(fill = .data[[fill_var]]), color = "gray20", linewidth = 0.1) +
+#     geom_sf(data = st_set_geometry(st_as_sf(data), "geometry"),
+#             fill = NA, color = "grey20", linewidth = 0.25) +
+#     fill_scale +
+#     facet_wrap(~peak_window, ncol = 1,
+#                labeller = labeller(peak_window = win_labels)) +
+#     coord_sf() + theme_void() +
+#     theme(
+#       strip.text = element_text(size = 20, face = "bold", margin = margin(b = 6)),
+#       legend.title = element_text(size = 14),
+#       legend.text = element_text(size = 12),
+#       legend.key.width = unit(0.7, "cm"),
+#       legend.key.height = unit(0.4, "cm"),
+#       legend.position = "right",
+#       plot.margin = margin(5, 5, 5, 5)
+#     )
+# }
+# ```
+# 
+# ```{r map_timing, fig.height=12, fig.width=8}
+# # ── Truth aggregates ──────────────────────────────────────────────────────────
+# hsa_window_truth = diff_peak_filtered %>%
+#   group_by(ID, state, peak_window) %>%
+#   summarise(
+#     mean_centroid_time_diff = mean(centroid_time_diff, na.rm = TRUE),
+#     mean_truth_mag_ratio    = mean(truth_mag_ratio,    na.rm = TRUE),
+#     .groups = "drop"
+#   )
+# 
+# us_map_truth = us_map %>%
+#   filter(state %in% lower48) %>%
+#   crossing(peak_window = c(1, 2, 3)) %>%
+#   left_join(hsa_window_truth %>% rename(hsa_nci_id = ID),
+#             by = c("hsa_nci_id", "state", "peak_window"))
+# 
+# p_truth_mag = seasonal_map(
+#   us_map_truth, "mean_truth_mag_ratio",
+#   title = NULL, limits = NULL,
+#   fill_scale = scale_fill_gradient2(
+#     low = "blue", mid = "white", high = "red", midpoint = 1,
+#     oob = scales::squish, na.value = "gray90",
+#     name = "Truth mag\nratio"
+#   )
+# ) + ggtitle("Truth: magnitude") +
+#   theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5,
+#                                   margin = margin(b = 4)))
+# 
+# p_metric_frechet = seasonal_map(
+#   us_map_window, "mean_frechet",
+#   title = NULL, limits = c(0, 25),
+#   fill_scale = scale_fill_viridis_c(
+#     option = "mako", direction = -1,
+#     limits = c(0, 25), oob = scales::squish,
+#     na.value = "gray90", name = "Fréchet\ndistance"
+#   )
+# # ) + ggtitle("Metric: Fréchet") +
+#   theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5,
+#                                   margin = margin(b = 4)))
+# 
+# 
+# p_truth_mag + p_metric_frechet
+```
+
+# Conclusion
+probabilistic start

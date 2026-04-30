@@ -9,6 +9,7 @@ library(sf)
 source("metric_functions.R")
 source("graphstat_functions.R")
 source("write_dtw.R")
+source("write_prob.R")
 
 # ── Raw data ──────────────────────────────────────────────────────────────────
 message("Loading raw data...")
@@ -18,8 +19,7 @@ us_map      = readRDS("us_map_pop_sf.rds")
 
 lower48 = setdiff(state.name, c("Alaska", "Hawaii"))
 
-# ── DTW metrics by window ─────────────────────────────────────────────────────
-message("Computing DTW metrics (this may take a while)...")
+# ── Window definitions ────────────────────────────────────────────────────────
 windows = list(
   w1 = c(1,   25),
   w2 = c(51,  100),
@@ -28,6 +28,9 @@ windows = list(
 
 hsa_unique = hsa_state %>% distinct(hsa_nci_id, state)
 hsa_list   = hsa_unique$hsa_nci_id
+
+# ── DTW metrics by window ─────────────────────────────────────────────────────
+message("Computing DTW metrics (this may take a while)...")
 
 res     = vector("list", length(hsa_list) * length(windows))
 counter = 1
@@ -48,6 +51,42 @@ for (ID in hsa_list) {
 }
 
 dtw_results_window = do.call(rbind, res) %>%
+  mutate(peak_window = as.numeric(sub("w", "", window))) %>%
+  select(-window)
+
+# ── Soft-DTW / probabilistic metrics by window ────────────────────────────────
+message("Computing soft-DTW metrics by window (this may take a while)...")
+
+prob_res     = vector("list", length(hsa_list) * length(windows))
+prob_counter = 1
+
+for (ID in hsa_list) {
+  for (w in names(windows)) {
+    bounds = windows[[w]]
+    
+    out = tryCatch(
+      pivot_wider(
+        prob_stats(hsa_id = ID, start = bounds[1], end = bounds[2]),
+        names_from  = Metric,
+        values_from = Value
+      ),
+      error = function(e) {
+        message(sprintf("  prob_stats failed: HSA %s window %s — %s", ID, w, e$message))
+        NULL
+      }
+    )
+    
+    if (!is.null(out)) {
+      out$ID     = ID
+      out$window = w
+      prob_res[[prob_counter]] = out
+    }
+    
+    prob_counter = prob_counter + 1
+  }
+}
+
+prob_results_window = do.call(rbind, Filter(Negate(is.null), prob_res)) %>%
   mutate(peak_window = as.numeric(sub("w", "", window))) %>%
   select(-window)
 
@@ -92,7 +131,8 @@ truth_peaks = all_metrics_modified %>%
 message("Joining and filtering...")
 
 diff_peak_data = truth_peaks %>%
-  left_join(dtw_results_window, by = c("ID", "peak_window"))
+  left_join(dtw_results_window,  by = c("ID", "peak_window")) %>%
+  left_join(prob_results_window, by = c("ID", "peak_window"))
 
 diff_peak_filtered = diff_peak_data %>%
   filter(
@@ -109,59 +149,18 @@ diff_peak_filtered = diff_peak_data %>%
 
 message(sprintf("Rows before filter: %d | after: %d", nrow(diff_peak_data), nrow(diff_peak_filtered)))
 
-# ── Weekly animation data ─────────────────────────────────────────────────────
-message("Computing weekly animation data...")
-
-# HSAs that passed the peak-level filters
-valid_hsas = diff_peak_filtered %>%
-  distinct(ID, state, peak_window)
-
-# Week-level metrics: magnitude ratio + cumulative fraction lead/lag
-weekly_map_data = all_metrics_modified %>%
-  filter(!is.na(inc_hsa), !is.na(inc_state), inc_state > 0, inc_hsa > 0) %>%
-  inner_join(valid_hsas, by = c("ID", "state", "peak_window")) %>%
-  group_by(ID, state, peak_window) %>%
-  arrange(week_index, .by_group = TRUE) %>%
-  mutate(
-    weekly_mag_ratio = inc_hsa / inc_state,
-    cumfrac_hsa      = cumsum(inc_hsa)   / sum(inc_hsa,   na.rm = TRUE),
-    cumfrac_state    = cumsum(inc_state) / sum(inc_state, na.rm = TRUE),
-    lead_lag         = cumfrac_hsa - cumfrac_state
-  ) %>%
-  ungroup() %>%
-  select(ID, state, peak_window, week_index,
-         inc_hsa, inc_state,
-         weekly_mag_ratio, cumfrac_hsa, cumfrac_state, lead_lag)
-
-# Join to map geometry (HSA + state outlines)
-# Keep geometry columns in the sf object; st_set_geometry() called at plot time
-us_map_weekly = us_map %>%
-  filter(state %in% lower48) %>%
-  left_join(
-    weekly_map_data %>% rename(hsa_nci_id = ID),
-    by = c("hsa_nci_id", "state")
-  )
-
-message(sprintf(
-  "Weekly animation rows: %d | unique weeks: %d | unique HSAs: %d",
-  nrow(weekly_map_data),
-  n_distinct(weekly_map_data$week_index),
-  n_distinct(weekly_map_data$ID)
-))
-
 # ── Save ──────────────────────────────────────────────────────────────────────
 message("Saving cache...")
 
 saveRDS(
   list(
-    dtw_results_window = dtw_results_window,
+    dtw_results_window   = dtw_results_window,
+    prob_results_window  = prob_results_window,
     all_metrics_modified = all_metrics_modified,
-    truth_peaks        = truth_peaks,
-    diff_peak_data     = diff_peak_data,
-    diff_peak_filtered = diff_peak_filtered,
-    us_map             = us_map,
-    weekly_map_data    = weekly_map_data
-    #us_map_weekly      = us_map_weekly
+    truth_peaks          = truth_peaks,
+    diff_peak_data       = diff_peak_data,
+    diff_peak_filtered   = diff_peak_filtered,
+    us_map               = us_map
   ),
   "report_data_cache.rds"
 )
