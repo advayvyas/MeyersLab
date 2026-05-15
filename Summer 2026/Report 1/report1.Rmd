@@ -1,0 +1,303 @@
+---
+title: "Report 1"
+author: "Advay Vyas"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+urlcolor: blue
+linkcolor: red
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=4, fig.width=6, fig.align = "left", warning=FALSE, echo=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+------------------------------------------------------------------------
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE, echo = FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(zoo)
+library(kableExtra)
+library(corrplot)
+```
+
+# Introduction
+```{r}
+raw_data = read.csv("../hsa_state_inc.csv")
+```
+
+# Timing
+```{r timing_summary}
+d = readRDS("../report_data_cache.rds")
+list2env(d, envir = .GlobalEnv)
+
+truth_lag_data = diff_peak_data %>%
+  select(ID, peak_window, hsa_peak_week, state_peak_week) %>%
+  mutate(truth_lag = hsa_peak_week - state_peak_week)
+
+timing_summary = prob_results_window %>%
+  left_join(truth_lag_data, by = c("ID", "peak_window")) %>%
+  group_by(peak_window) %>%
+  summarise(
+    n = n(),
+    mean_lag_mean = mean(mean_lag, na.rm = TRUE),
+    mean_lag_sd = sd(mean_lag, na.rm = TRUE),
+    mean_lag_se = mean_lag_sd / sqrt(n),
+    sd_lag_mean = mean(sd_lag, na.rm = TRUE),
+    sd_lag_sd = sd(sd_lag, na.rm = TRUE),
+    sd_lag_se = sd_lag_sd / sqrt(n),
+    truth_lag_mean = mean(truth_lag, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(peak_window = recode(peak_window, "1" = "2022/23", "2" = "2023/24", "3" = "2024/25")) %>%
+  mutate(
+    mean_lag_ci_lower = mean_lag_mean - 1.96 * mean_lag_se,
+    mean_lag_ci_upper = mean_lag_mean + 1.96 * mean_lag_se,
+    sd_lag_ci_lower = sd_lag_mean - 1.96 * sd_lag_se,
+    sd_lag_ci_upper = sd_lag_mean + 1.96 * sd_lag_se
+  )
+
+knitr::kable(timing_summary %>% 
+  select(peak_window, n, mean_lag_mean, mean_lag_ci_lower, mean_lag_ci_upper,
+         sd_lag_mean, sd_lag_ci_lower, sd_lag_ci_upper, truth_lag_mean),
+  digits = 3, 
+  col.names = c("Season", "N", "Mean lag", "Lower", "Upper",
+                "SD lag", "Lower", "Upper", "Truth lag")) %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+## Mean Lag (weeks)
+This is the average signed timing offset. Positive = HSA leads state; negative = HSA lags.
+
+```{r timing_mean_lag_plot}
+timing_for_plot = timing_summary %>%
+  select(peak_window, mean_lag_mean, mean_lag_ci_lower, mean_lag_ci_upper)
+
+ggplot(timing_for_plot, aes(x = peak_window, y = mean_lag_mean)) +
+  geom_point(size = 4, color = "steelblue") +
+  geom_errorbar(aes(ymin = mean_lag_ci_lower, ymax = mean_lag_ci_upper),
+                width = 0.2, color = "steelblue", lwd = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "Mean Lag by Season (95% CI)",
+    x = "Season",
+    y = "Mean lag (weeks)"
+  ) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 13, face = "bold"))
+```
+
+## SD Lag (weeks)
+This is the standard deviation of timing offsets per week. High values indicate HSAs cross state timing during season.
+
+```{r timing_sd_lag_plot}
+timing_for_plot3 = timing_summary %>%
+  select(peak_window, sd_lag_mean, sd_lag_ci_lower, sd_lag_ci_upper)
+
+ggplot(timing_for_plot3, aes(x = peak_window, y = sd_lag_mean)) +
+  geom_point(size = 4, color = "coral") +
+  geom_errorbar(aes(ymin = sd_lag_ci_lower, ymax = sd_lag_ci_upper),
+                width = 0.2, color = "coral", lwd = 1) +
+  labs(
+    title = "SD Lag by Season (95% CI)",
+    subtitle = "Variability in timing offset across weeks",
+    x = "Season",
+    y = "SD of lag (weeks)"
+  ) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 13, face = "bold"))
+```
+
+## Ground Truth Lag (weeks)
+This is which week the HSA peaks minus which week the state peaks.
+
+```{r timing_truth_lag_plot}
+timing_for_plot4 = timing_summary %>%
+  select(peak_window, truth_lag_mean)
+
+ggplot(timing_for_plot4, aes(x = peak_window, y = truth_lag_mean)) +
+  geom_point(size = 5, color = "darkgreen") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "Ground Truth Peak Lag by Season",
+    subtitle = "Positive = HSA peaks later; Negative = HSA peaks earlier",
+    x = "Season",
+    y = "Truth lag (weeks)"
+  ) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 13, face = "bold"))
+```
+
+---
+
+# Mean Lag vs Ground Truth Lag
+
+Validation: does mean_lag track the actual peak timing difference?
+
+```{r lag_validation}
+validation_data = prob_results_window %>%
+  left_join(truth_lag_data, by = c("ID", "peak_window")) %>%
+  filter(!is.na(mean_lag) & !is.na(truth_lag)) %>%
+  mutate(peak_window = recode(peak_window, "1" = "2022/23", "2" = "2023/24", "3" = "2024/25"))
+
+ggplot(validation_data, aes(x = mean_lag, y = truth_lag, color = peak_window)) +
+  geom_point(alpha = 0.4, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, lwd = 1) +
+  facet_wrap(~ peak_window) +
+  labs(
+    title = "Soft-DTW Mean Lag vs Ground Truth Peak Lag",
+    x = "Soft-DTW mean lag (weeks)",
+    y = "Ground truth peak lag (weeks)",
+    color = "Season"
+  ) +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+
+# Magnitude 
+```{r magnitude_summary}
+magnitude_summary = diff_peak_data %>%
+  filter(!is.na(truth_mag_ratio), !is.na(soft_dtw_distance)) %>%
+  group_by(peak_window) %>%
+  summarise(
+    n = n(),
+    truth_mag_mean = mean(truth_mag_ratio, na.rm = TRUE),
+    soft_dtw_mean = mean(soft_dtw_distance, na.rm = TRUE),
+    soft_dtw_sd = sd(soft_dtw_distance, na.rm = TRUE),
+    soft_dtw_se = soft_dtw_sd / sqrt(n),
+    .groups = "drop"
+  ) %>%
+  mutate(peak_window = recode(peak_window, "1" = "2022/23", "2" = "2023/24", "3" = "2024/25")) %>%
+  mutate(
+    soft_dtw_ci_lower = soft_dtw_mean - 1.96 * soft_dtw_se,
+    soft_dtw_ci_upper = soft_dtw_mean + 1.96 * soft_dtw_se
+  )
+
+knitr::kable(magnitude_summary %>%
+  select(peak_window, n, truth_mag_mean, soft_dtw_mean, soft_dtw_ci_lower, soft_dtw_ci_upper),
+  digits = 3,
+  col.names = c("Season", "N", "Peak ratio (truth)", "Soft-DTW", "Lower", "Upper")) %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+## Ground Truth 
+Ratio of HSA peak to state peak. 1.0 = same peak height; >1 = HSA peaks higher.
+
+```{r magnitude_truth_plot}
+mag_for_plot = magnitude_summary %>%
+  select(peak_window, truth_mag_mean)
+
+ggplot(mag_for_plot, aes(x = peak_window, y = truth_mag_mean)) +
+  geom_point(size = 5, color = "firebrick") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "Peak Magnitude Ratio by Season",
+    subtitle = "HSA peak / State peak",
+    x = "Season",
+    y = "Magnitude ratio"
+  ) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 13, face = "bold"))
+```
+
+## Soft-DTW Distance
+When this metric is lower, curves more similar in shape and timing.
+
+```{r magnitude_softdtw_plot}
+mag_for_plot2 = magnitude_summary %>%
+  select(peak_window, soft_dtw_mean, soft_dtw_ci_lower, soft_dtw_ci_upper)
+
+ggplot(mag_for_plot2, aes(x = peak_window, y = soft_dtw_mean)) +
+  geom_point(size = 4, color = "darkorange") +
+  geom_errorbar(aes(ymin = soft_dtw_ci_lower, ymax = soft_dtw_ci_upper),
+                width = 0.2, color = "darkorange", lwd = 1) +
+  labs(
+    title = "Soft-DTW Distance by Season (95% CI)",
+    subtitle = "Overall curve dissimilarity",
+    x = "Season",
+    y = "Soft-DTW distance"
+  ) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 13, face = "bold"))
+```
+
+
+# Stratified by Population Ratio
+
+```{r pop_ratio_strata}
+pop_data = raw_data %>%
+  select(hsa_nci_id, season, pop_ratio) %>%
+  distinct()
+
+season_map = tibble(peak_window = c(1, 2, 3), 
+                    season = c("2022/23", "2023/24", "2024/25"))
+
+prob_results_pop = prob_results_window %>%
+  left_join(season_map, by = "peak_window") %>%
+  left_join(pop_data, by = c("ID" = "hsa_nci_id", "season" = "season")) %>%
+  filter(!is.na(pop_ratio)) %>%
+  mutate(pop_ratio_q = ntile(pop_ratio, 4))
+
+timing_by_pop = prob_results_pop %>%
+  group_by(peak_window, pop_ratio_q) %>%
+  summarise(
+    n = n(),
+    mean_lag_mean = mean(mean_lag, na.rm = TRUE),
+    mean_lag_se = sd(mean_lag, na.rm = TRUE) / sqrt(n),
+    mean_lag_ci_lower = mean_lag_mean - 1.96 * mean_lag_se,
+    mean_lag_ci_upper = mean_lag_mean + 1.96 * mean_lag_se,
+    .groups = "drop"
+  ) %>%
+  mutate(peak_window = recode(peak_window, "1" = "2022/23", "2" = "2023/24", "3" = "2024/25"),
+         pop_ratio_q = recode(pop_ratio_q, "1" = "Q1 (smallest)", "2" = "Q2", "3" = "Q3", "4" = "Q4 (largest)"))
+
+ggplot(timing_by_pop, aes(x = peak_window, y = mean_lag_mean, color = pop_ratio_q)) +
+  geom_point(size = 3, position = position_dodge(width = 0.3)) +
+  geom_errorbar(aes(ymin = mean_lag_ci_lower, ymax = mean_lag_ci_upper),
+                width = 0.15, position = position_dodge(width = 0.3), lwd = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "Mean Lag by Season and Population Ratio Quartile",
+    x = "Season",
+    y = "Mean lag (weeks)",
+    color = "Population ratio"
+  ) +
+  theme_bw() +
+  theme(legend.position = "right")
+```
+
+# Correlation
+```{r correlation}
+mag_data = diff_peak_data %>%
+  select(ID, peak_window, truth_mag_ratio) %>%
+  rename(ID_mag = ID)
+
+corr_data = prob_results_window %>%
+  left_join(mag_data, by = c("ID" = "ID_mag", "peak_window" = "peak_window")) %>%
+  select(mean_lag, sd_lag, soft_dtw_distance, truth_mag_ratio) %>%
+  drop_na()
+
+if(nrow(corr_data) > 0) {
+  corr_matrix = cor(corr_data, use = "complete.obs")
+  
+  knitr::kable(round(corr_matrix, 3)) %>%
+    kable_styling(bootstrap_options = "striped")
+} else {
+  cat("Not enough data for correlation matrix")
+}
+```
+
+
+# Conclusion
+Timing metrics look interesting, I think soft-DTW lag is still backwards or ground truth is backwards. Magnitude metrics look interesting, the ratios look nice but I'm having trouble seeing if the trends actually match. I like the quantile plot a lot and it looks pretty useful, describes how HSAs with more similar populations have smaller lags.
