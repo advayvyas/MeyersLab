@@ -1,3 +1,9 @@
 *.csv
 *.rds
 *.rdb
+*.aux
+*.log
+*.fls
+*.out
+*.gz
+*.fdb_latexmk
