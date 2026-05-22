@@ -1,0 +1,31 @@
+\documentclass{article}
+\usepackage{graphicx} 
+\usepackage{hyperref}
+
+\title{Report 2}
+\author{Advay Vyas}
+\date{May 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+This week, I think I will be implementing my work in Python because a switch that is needed so that I can access a very useful Python library on curve differences so that I don't have to rely on imperfect/unfinished implementations and can work directly with the data. I'm also redoing this approach by first reading a bunch of literature and summarizing and citing it before implementing to better document my work and ground it, rather than just implementing random stuff every week and hoping to see what will stick. 
+
+\section{Literature}
+There's a great collection of relevant literature posted at this Github: \linebreak\textit{\href{https://github.com/cjekel/similarity_measures}{https://github.com/cjekel/similarity\_measures}}, which is also the aforementioned Python library that I plan to begin using heavily. 
+
+\section{Area Between Curves Metric}
+This metric is the accumulated difference between two curves, often with one curve always or usually above the other. The metric is equivalent to the integral of $f(x) - g(x)$ over the desired region. Basically, instead of Frechet distance being a worst-scenario metric which doesn't really describe the differences well, ABC is able to do a much better job showcasing the actual difference. 
+
+\section{SoftDTW}
+I found this Github: \textit{\href{https://github.com/mblondel/soft-dtw}{https://github.com/mblondel/soft-dtw}} that I might want to import and use for SoftDTW implementation. I'm still struggling a bit with the direction of this project, I feel like I'm doing the same things every week, but yeah. Would like to make some progress towards finalizing something.
+
+\section{Implementation}
+I'm planning to take each HSA, compute the values, summarize by state, and then make some interesting figures and statistical analyses to look at some trends in the data. An important part of the data processing is to create windows for all the HSAs (should be about four windows now with the new data). I'm thinking of finding a way to get a threshold to define the windows differently for each HSA and then graph them so I can check them all and see if they are good.
+
+\section{Conclusion}
+This week, I downloaded and processed the new dataset to be used that is up to May 2026, was able to get started on a new metric exploration, wrote down some details on the new variables, moved to a new implementation in Python for easier access of libraries and such. Next week, I plan to finish the Jupyter notebook housing the entire process and then finetune the process and get some nice graphs as well.
+
+\end{document}
