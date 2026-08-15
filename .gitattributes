@@ -1,2 +1,4 @@
 *.Rmd linguist-language=R
-*.html linguist-vendored
+*.html linguist-generated=true
+*_cache/* linguist-generated=true
+*_files/* linguist-generated=true
